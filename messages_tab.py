@@ -5,6 +5,7 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QListWidget, QLineEdit, QPushButton, QTextEdit, QHBoxLayout # type: ignore
 from PyQt5.QtGui import QFont  # type: ignore
 from logo_widget import AUBUS_MAROON
+from ui_styles import set_title_label, style_button, style_input
 
 class MessagesTab(QWidget):
     def __init__(self, app_state=None):
@@ -15,8 +16,7 @@ class MessagesTab(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
         title = QLabel("Messages")
-        title.setFont(QFont("Verdana", 14))
-        title.setStyleSheet(f"color: {AUBUS_MAROON};")
+        set_title_label(title, size=14)
         layout.addWidget(title)
 
         # left: contacts, right: chat
@@ -36,9 +36,11 @@ class MessagesTab(QWidget):
         row = QHBoxLayout()
         self.message_input = QLineEdit()
         self.message_input.setPlaceholderText("Type a message...")
+        style_input(self.message_input, width=340)
         row.addWidget(self.message_input)
         send_btn = QPushButton("Send")
         send_btn.clicked.connect(self.send_message)
+        style_button(send_btn, min_height=30)
         row.addWidget(send_btn)
         right.addLayout(row)
         container.addLayout(right, 3)

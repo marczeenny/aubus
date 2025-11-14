@@ -5,13 +5,16 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMessageBox # type: ignore
 from PyQt5.QtGui import QFont # type: ignore
 from logo_widget import get_logo_label, AUBUS_MAROON
+from ui_styles import set_title_label, style_button
 
 class ProgressPage(QWidget):
-    def __init__(self, app_state=None):
+    def __init__(self, app_state=None, on_ride_end=None):
         super().__init__()
         self.setObjectName("ProgressPage")
         self.app_state = app_state or {}
         self.ride_info = {}
+        self.on_ride_end = on_ride_end
+        self.ride_started = False  # Track if ride has been started
         self.init_ui()
 
     def init_ui(self):
@@ -19,16 +22,18 @@ class ProgressPage(QWidget):
         layout.addWidget(get_logo_label(size=64))
 
         self.info_label = QLabel("No active ride.")
-        self.info_label.setFont(QFont("Verdana", 12))
-        self.info_label.setStyleSheet(f"color: {AUBUS_MAROON};")
+        set_title_label(self.info_label, size=12)
         layout.addWidget(self.info_label)
 
         # Buttons
         row = QHBoxLayout()
         self.start_btn = QPushButton("Start Ride")
         self.start_btn.clicked.connect(self.start_ride)
+        style_button(self.start_btn, min_height=32)
         self.end_btn = QPushButton("End Ride")
         self.end_btn.clicked.connect(self.end_ride)
+        self.end_btn.setEnabled(False)  # Disabled until ride is started
+        style_button(self.end_btn, min_height=32)
         row.addWidget(self.start_btn)
         row.addWidget(self.end_btn)
         layout.addLayout(row)
@@ -39,6 +44,7 @@ class ProgressPage(QWidget):
         layout.addWidget(self.weather_label)
         self.refresh_weather_btn = QPushButton("Refresh Weather (placeholder)")
         self.refresh_weather_btn.clicked.connect(self.refresh_weather)
+        style_button(self.refresh_weather_btn)
         layout.addWidget(self.refresh_weather_btn)
 
         self.setLayout(layout)
@@ -48,16 +54,23 @@ class ProgressPage(QWidget):
         Called when a ride becomes active. ride_info is a dict with keys like 'place', 'time', 'accepted_by' etc.
         """
         self.ride_info = ride_info
+        self.ride_started = False  # Reset ride started flag
+        self.end_btn.setEnabled(False)  # Disable end button until ride starts
         s = f"Ride to {ride_info.get('place')} at {ride_info.get('time')}\nPartner: {ride_info.get('accepted_by')}"
         self.info_label.setText(s)
 
     def start_ride(self):
         # TODO: notify backend / peers
         QMessageBox.information(self, "Ride started", "Ride marked as started (demo).")
+        self.ride_started = True
+        self.end_btn.setEnabled(True)  # Enable end button once ride is started
 
     def end_ride(self):
         # TODO: notify backend / peers, mark ride complete
         QMessageBox.information(self, "Ride ended", "Ride marked as completed (demo).")
+        # Call the callback to return to ride tab
+        if self.on_ride_end:
+            self.on_ride_end()
 
     def refresh_weather(self):
         # Placeholder: replace with real weather API call (OpenWeatherMap etc.)

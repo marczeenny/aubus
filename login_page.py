@@ -5,7 +5,10 @@
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QHBoxLayout # type: ignore
 from PyQt5.QtGui import QFont # type: ignore
+from PyQt5.QtCore import Qt # type: ignore
 from logo_widget import get_logo_label, AUBUS_MAROON
+from ui_styles import style_button, set_title_label, style_input
+from validators import is_valid_email
 
 class LoginPage(QWidget):
     def __init__(self, parent_stack=None, app_state=None):
@@ -19,41 +22,63 @@ class LoginPage(QWidget):
         self.init_ui()
 
     def init_ui(self):
+        outer = QVBoxLayout()
+        outer.addStretch()
+
+        # Center content with horizontal padding
         layout = QVBoxLayout()
         layout.setSpacing(12)
+        layout.setAlignment(Qt.AlignCenter)
 
         # logo
-        layout.addWidget(get_logo_label(size=96))
+        logo = get_logo_label(size=96)
+        logo.setAlignment(Qt.AlignCenter)
+        layout.addWidget(logo)
 
         # title
         title = QLabel("Login")
-        title.setFont(QFont("Verdana", 18))
+        set_title_label(title, size=18)
+        title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
         # email
         self.email_input = QLineEdit()
         self.email_input.setPlaceholderText("Email")
-        layout.addWidget(self.email_input)
+        style_input(self.email_input)
+        layout.addWidget(self.email_input, alignment=Qt.AlignCenter)
 
         # password (hidden)
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText("Password")
         self.password_input.setEchoMode(QLineEdit.Password)  # hides typed text
-        layout.addWidget(self.password_input)
+        style_input(self.password_input)
+        layout.addWidget(self.password_input, alignment=Qt.AlignCenter)
 
         # login button
         login_btn = QPushButton("Login")
         login_btn.clicked.connect(self.on_login_clicked)
-        layout.addWidget(login_btn)
+        style_button(login_btn)
+        layout.addWidget(login_btn, alignment=Qt.AlignCenter)
 
         # register redirect
         row = QHBoxLayout()
+        row.setAlignment(Qt.AlignCenter)
         hint = QLabel("Don't have an account? Register here:")
         row.addWidget(hint)
         reg_btn = QPushButton("Register")
         reg_btn.clicked.connect(self.go_to_register)
+        style_button(reg_btn)
         row.addWidget(reg_btn)
         layout.addLayout(row)
+
+        # Wrap centered layout with horizontal padding
+        h_layout = QHBoxLayout()
+        h_layout.addStretch()
+        h_layout.addLayout(layout)
+        h_layout.addStretch()
+
+        outer.addLayout(h_layout)
+        outer.addStretch()
 
         # minor styling
         self.setStyleSheet(f"""
@@ -68,7 +93,7 @@ class LoginPage(QWidget):
             QLabel{{ color: {AUBUS_MAROON}; }}
         """)
 
-        self.setLayout(layout)
+        self.setLayout(outer)
 
     def on_login_clicked(self):
         # NOTE: currently not connected to backend.
@@ -76,6 +101,10 @@ class LoginPage(QWidget):
         password = self.password_input.text()
         if not email or not password:
             QMessageBox.warning(self, "Missing fields", "Please enter both email and password.")
+            return
+        # Basic email format validation (regex-based)
+        if not is_valid_email(email):
+            QMessageBox.warning(self, "Invalid email", "Please enter a valid email address.")
             return
 
         # TODO: replace with backend authentication call (send_json / socket).
@@ -91,3 +120,8 @@ class LoginPage(QWidget):
     def go_to_register(self):
         if self.parent_stack:
             self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(self.parent_stack.findChild(QWidget, "RegisterPage")))
+
+    def reset_form(self):
+        """Clear email and password inputs."""
+        self.email_input.clear()
+        self.password_input.clear()

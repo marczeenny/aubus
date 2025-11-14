@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QLineEdit, QSpinBox, 
                              QPushButton, QListWidget, QListWidgetItem, QHBoxLayout, QMessageBox)
 from PyQt5.QtGui import QFont # type: ignore
 from logo_widget import AUBUS_MAROON
+from ui_styles import style_button, set_title_label, style_input
 
 class RideTab(QWidget):
     def __init__(self, app_state=None, go_to_progress=None):
@@ -22,16 +23,17 @@ class RideTab(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
         title = QLabel("Request / Offer a Ride")
-        title.setFont(QFont("Verdana", 14))
-        title.setStyleSheet(f"color: {AUBUS_MAROON};")
+        set_title_label(title, size=14)
         layout.addWidget(title)
 
         self.place_input = QLineEdit()
         self.place_input.setPlaceholderText("Departure place / area")
+        style_input(self.place_input, width=300)
         layout.addWidget(self.place_input)
 
         self.time_input = QLineEdit()
         self.time_input.setPlaceholderText("Departure time (e.g. 08:30)")
+        style_input(self.time_input, width=300)
         layout.addWidget(self.time_input)
 
         self.seats_input = QSpinBox()
@@ -39,10 +41,12 @@ class RideTab(QWidget):
         self.seats_input.setMaximum(10)
         self.seats_input.setValue(1)
         self.seats_input.setPrefix("Seats: ")
+        style_input(self.seats_input, width=140)
         layout.addWidget(self.seats_input)
 
         ride_btn = QPushButton("Ride")
         ride_btn.clicked.connect(self.on_ride_clicked)
+        style_button(ride_btn)
         layout.addWidget(ride_btn)
 
         # matches list (drivers for passenger / passengers for driver)
@@ -53,9 +57,11 @@ class RideTab(QWidget):
         btn_row = QHBoxLayout()
         accept_btn = QPushButton("Accept Selected")
         accept_btn.clicked.connect(self.on_accept_selected)
+        style_button(accept_btn, min_height=30)
         btn_row.addWidget(accept_btn)
         deny_btn = QPushButton("Deny Selected")
         deny_btn.clicked.connect(self.on_deny_selected)
+        style_button(deny_btn, min_height=30)
         btn_row.addWidget(deny_btn)
         layout.addLayout(btn_row)
 
@@ -109,3 +115,10 @@ class RideTab(QWidget):
             return
         item.setText(item.text() + " — DENIED")
         # In real app, notify backend
+
+    def reset_form(self):
+        """Clear form and matches list to allow requesting/offering another ride."""
+        self.place_input.clear()
+        self.time_input.clear()
+        self.seats_input.setValue(1)
+        self.matches_list.clear()

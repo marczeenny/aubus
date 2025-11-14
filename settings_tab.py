@@ -1,9 +1,11 @@
 # settings_tab.py
 # Settings tab: allows changing area, status (driver/passenger), logout button, and placeholders.
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QMessageBox # type: ignore
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QMessageBox, QHBoxLayout # type: ignore
 from PyQt5.QtGui import QFont # type: ignore
+from PyQt5.QtCore import Qt # type: ignore
 from logo_widget import AUBUS_MAROON
+from ui_styles import set_title_label, style_button, style_input
 
 class SettingsTab(QWidget):
     def __init__(self, app_state=None, on_logout=None):
@@ -13,17 +15,24 @@ class SettingsTab(QWidget):
         self.init_ui()
 
     def init_ui(self):
+        outer = QVBoxLayout()
+        outer.addStretch()
+
+        # Center content with horizontal padding
         layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignCenter)
+
         title = QLabel("Settings")
-        title.setFont(QFont("Verdana", 14))
-        title.setStyleSheet(f"color: {AUBUS_MAROON};")
+        set_title_label(title, size=14)
+        title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
         # Area change
         self.area_input = QLineEdit()
         self.area_input.setPlaceholderText("Area (e.g. Ras Beirut)")
         self.area_input.setText(self.app_state.get('area', ''))
-        layout.addWidget(self.area_input)
+        style_input(self.area_input, width=320)
+        layout.addWidget(self.area_input, alignment=Qt.AlignCenter)
 
         # Role selection
         self.role_box = QComboBox()
@@ -32,20 +41,32 @@ class SettingsTab(QWidget):
         idx = self.role_box.findText(current)
         if idx >= 0:
             self.role_box.setCurrentIndex(idx)
-        layout.addWidget(self.role_box)
+        self.role_box.setFixedWidth(280)
+        layout.addWidget(self.role_box, alignment=Qt.AlignCenter)
 
         # Save changes (locally)
         save_btn = QPushButton("Save")
         save_btn.clicked.connect(self.save_settings)
-        layout.addWidget(save_btn)
+        style_button(save_btn)
+        layout.addWidget(save_btn, alignment=Qt.AlignCenter)
 
         # Logout
         logout_btn = QPushButton("Logout")
         logout_btn.clicked.connect(self.logout)
-        layout.addWidget(logout_btn)
+        style_button(logout_btn)
+        layout.addWidget(logout_btn, alignment=Qt.AlignCenter)
+
+        # Wrap centered layout with horizontal padding
+        h_layout = QHBoxLayout()
+        h_layout.addStretch()
+        h_layout.addLayout(layout)
+        h_layout.addStretch()
+
+        outer.addLayout(h_layout)
+        outer.addStretch()
 
         # Styling
-        self.setLayout(layout)
+        self.setLayout(outer)
 
     def save_settings(self):
         self.app_state['area'] = self.area_input.text().strip()

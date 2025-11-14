@@ -4,6 +4,7 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QListWidget, QListWidgetItem, QDialog, QHBoxLayout, QPushButton, QSpinBox # type: ignore
 from PyQt5.QtGui import QFont # type: ignore
 from logo_widget import AUBUS_MAROON
+from ui_styles import set_title_label, style_button
 
 class PreviousTab(QWidget):
     def __init__(self, app_state=None):
@@ -14,8 +15,7 @@ class PreviousTab(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
         title = QLabel("Previous Rides")
-        title.setFont(QFont("Verdana", 14))
-        title.setStyleSheet(f"color: {AUBUS_MAROON};")
+        set_title_label(title, size=14)
         layout.addWidget(title)
 
         self.list_w = QListWidget()
@@ -42,6 +42,8 @@ class PreviousTab(QWidget):
         rating.setMinimum(1)
         rating.setMaximum(5)
         rating.setValue(5)
+        from ui_styles import style_input
+        style_input(rating, width=120, min_height=28)
         h.addWidget(rating)
         v.addLayout(h)
 
@@ -52,6 +54,7 @@ class PreviousTab(QWidget):
             # e.g., send_json(conn, {"type":"ADD_RATING", "payload": {...}})
             dlg.accept()
         submit.clicked.connect(submit_rating)
+        style_button(submit, min_height=28)
         v.addWidget(submit)
 
         dlg.setLayout(v)
