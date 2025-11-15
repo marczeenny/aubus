@@ -74,7 +74,12 @@ class SettingsTab(QWidget):
         QMessageBox.information(self, "Saved", "Settings saved locally. Integrate with backend to persist.")
 
     def logout(self):
-        # Clear auth flag and call on_logout
+        # Clear auth flag while preserving API client reference
+        api = self.app_state.get("api")
         self.app_state.clear()
+        if api:
+            self.app_state["api"] = api
+        self.area_input.clear()
+        self.role_box.setCurrentIndex(0)
         if self.on_logout:
             self.on_logout()

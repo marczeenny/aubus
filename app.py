@@ -9,13 +9,13 @@ from login_page import LoginPage
 from register_page import RegisterPage
 from preliminary_page import PreliminaryPage
 from main_page import MainPage
+from api_client import ApiClient
 
 def build_app():
     app = QApplication(sys.argv)
 
-    # Shared application state (in-memory). In future this can hold server connection,
-    # authenticated user info, sockets, etc.
-    app_state = {}
+    # Shared application state (in-memory). Holds authenticated user info and API client.
+    app_state = {"api": ApiClient()}
 
     stack = QStackedWidget()
     stack.setWindowTitle("AUBus - Frontend Demo")
