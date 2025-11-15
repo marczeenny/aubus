@@ -9,6 +9,7 @@ from PyQt5.QtCore import Qt # type: ignore
 from logo_widget import get_logo_label, AUBUS_MAROON
 from validators import is_valid_email
 from ui_styles import style_button, set_title_label, style_input
+from api_client import ApiClientError
 
 class RegisterPage(QWidget):
     def __init__(self, parent_stack=None, app_state=None):
@@ -104,16 +105,49 @@ class RegisterPage(QWidget):
             QMessageBox.warning(self, "Password mismatch", "Passwords do not match.")
             return
 
-        # TODO: Connect to backend to create user and check uniqueness:
-        # send_json(conn, {"type":"REGISTER", "payload": {"name": name, "email": email, "password": pw, ...}})
-        # For now, pretend registration is successful and redirect to preliminary page.
-        self.app_state['email'] = email
-        self.app_state['name'] = name
-        self.app_state['authenticated'] = True
+        api = self.app_state.get("api")
+        if not api:
+            QMessageBox.critical(self, "Configuration error", "API client not initialized.")
+            return
 
-        QMessageBox.information(self, "Registered", "Registration succeeded (demo). Redirecting...")
+        try:
+            response = api.register(name=name, email=email, username=email, password=pw)
+        except ApiClientError as exc:
+            QMessageBox.critical(self, "Registration failed", str(exc))
+            return
+
+        if response.type != "REGISTER_OK":
+            reason = ""
+            if response.payload and response.payload.get("reason"):
+                reason = f": {response.payload['reason']}"
+            QMessageBox.warning(self, "Registration failed", f"Could not register{reason}.")
+            return
+
+        # Automatically log the user in after registration so we have the user profile.
+        try:
+            login_resp = api.login(username=email, password=pw)
+        except ApiClientError as exc:
+            QMessageBox.warning(self, "Registered", f"Account created, but automatic login failed: {exc}. Please log in manually.")
+            return
+
+        if login_resp.type != "LOGIN_OK" or not login_resp.payload:
+            QMessageBox.warning(self, "Registered", "Account created, but login failed. Please try signing in manually.")
+            return
+
+        user = login_resp.payload
+        self.app_state['authenticated'] = True
+        self.app_state['user_id'] = user.get("user_id")
+        self.app_state['name'] = user.get("name")
+        self.app_state['email'] = user.get("email")
+        self.app_state['is_driver'] = user.get("is_driver")
+        self.app_state['area'] = user.get("area")
+        self.app_state['username'] = user.get("username")
+
+        QMessageBox.information(self, "Registered", "Registration succeeded. Redirecting...")
         if self.parent_stack:
-            self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(self.parent_stack.findChild(QWidget, "PreliminaryPage")))
+            preliminary = self.parent_stack.findChild(QWidget, "PreliminaryPage")
+            if preliminary:
+                self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(preliminary))
 
     def reset_form(self):
         """Clear all form inputs."""

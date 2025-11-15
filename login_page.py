@@ -9,6 +9,7 @@ from PyQt5.QtCore import Qt # type: ignore
 from logo_widget import get_logo_label, AUBUS_MAROON
 from ui_styles import style_button, set_title_label, style_input
 from validators import is_valid_email
+from api_client import ApiClientError
 
 class LoginPage(QWidget):
     def __init__(self, parent_stack=None, app_state=None):
@@ -96,7 +97,6 @@ class LoginPage(QWidget):
         self.setLayout(outer)
 
     def on_login_clicked(self):
-        # NOTE: currently not connected to backend.
         email = self.email_input.text().strip()
         password = self.password_input.text()
         if not email or not password:
@@ -107,15 +107,36 @@ class LoginPage(QWidget):
             QMessageBox.warning(self, "Invalid email", "Please enter a valid email address.")
             return
 
-        # TODO: replace with backend authentication call (send_json / socket).
-        # For now, store email in app_state and go to preliminary page.
-        self.app_state['email'] = email
-        # mark user temporarily as authenticated
+        api = self.app_state.get("api")
+        if not api:
+            QMessageBox.critical(self, "Configuration error", "API client not initialized.")
+            return
+
+        try:
+            response = api.login(username=email, password=password)
+        except ApiClientError as exc:
+            QMessageBox.critical(self, "Login failed", str(exc))
+            return
+
+        if response.type != "LOGIN_OK" or not response.payload:
+            QMessageBox.warning(self, "Login failed", "Invalid username or password.")
+            return
+
+        user = response.payload
         self.app_state['authenticated'] = True
-        # go to preliminary page (index must match app setup)
+        self.app_state['user_id'] = user.get("user_id")
+        self.app_state['name'] = user.get("name")
+        self.app_state['email'] = user.get("email")
+        self.app_state['is_driver'] = user.get("is_driver")
+        self.app_state['area'] = user.get("area")
+        self.app_state['username'] = user.get("username")
+
         if self.parent_stack:
-            # index 2 is typically PreliminaryPage in app.py - ensure consistency
-            self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(self.parent_stack.findChild(QWidget, "PreliminaryPage")))
+            preliminary = self.parent_stack.findChild(QWidget, "PreliminaryPage")
+            if preliminary:
+                self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(preliminary))
+            else:
+                QMessageBox.warning(self, "Navigation error", "Preliminary page not found.")
 
     def go_to_register(self):
         if self.parent_stack:

@@ -71,7 +71,10 @@ class MainPage(QWidget):
         # For demo: return to login screen
         if self.parent_stack:
             self.reset_all_pages()  # Reset all pages
+            api = self.app_state.get("api")
             self.app_state.clear()  # Clear auth and user data
+            if api:
+                self.app_state["api"] = api
             # Reset form pages
             login_page = self.parent_stack.findChild(QWidget, "LoginPage")
             register_page = self.parent_stack.findChild(QWidget, "RegisterPage")
