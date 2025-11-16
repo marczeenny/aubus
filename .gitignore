@@ -4,3 +4,4 @@ __pycache__
 *.pyc
 *.iml
 .idea/*.iml
+.idea
