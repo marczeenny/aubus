@@ -1,2 +1,6 @@
 aubus.db
 __pycache__
+*.xml
+*.pyc
+*.iml
+.idea/*.iml

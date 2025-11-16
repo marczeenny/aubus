@@ -116,10 +116,11 @@ class RegisterPage(QWidget):
             QMessageBox.critical(self, "Registration failed", str(exc))
             return
 
-        if response.type != "REGISTER_OK":
+        if response.get("type") != "REGISTER_OK":
             reason = ""
-            if response.payload and response.payload.get("reason"):
-                reason = f": {response.payload['reason']}"
+            payload = response.get("payload") or {}
+            if payload.get("reason"):
+                reason = f": {payload['reason']}"
             QMessageBox.warning(self, "Registration failed", f"Could not register{reason}.")
             return
 
@@ -130,11 +131,11 @@ class RegisterPage(QWidget):
             QMessageBox.warning(self, "Registered", f"Account created, but automatic login failed: {exc}. Please log in manually.")
             return
 
-        if login_resp.type != "LOGIN_OK" or not login_resp.payload:
+        if login_resp.get("type") != "LOGIN_OK" or not login_resp.get("payload"):
             QMessageBox.warning(self, "Registered", "Account created, but login failed. Please try signing in manually.")
             return
 
-        user = login_resp.payload
+        user = login_resp["payload"]
         self.app_state['authenticated'] = True
         self.app_state['user_id'] = user.get("user_id")
         self.app_state['name'] = user.get("name")
@@ -142,12 +143,19 @@ class RegisterPage(QWidget):
         self.app_state['is_driver'] = user.get("is_driver")
         self.app_state['area'] = user.get("area")
         self.app_state['username'] = user.get("username")
+        self.app_state['role_selected'] = user.get("role_selected", False)
+        self.app_state['role'] = "driver" if user.get("is_driver") else "passenger"
 
         QMessageBox.information(self, "Registered", "Registration succeeded. Redirecting...")
         if self.parent_stack:
-            preliminary = self.parent_stack.findChild(QWidget, "PreliminaryPage")
-            if preliminary:
-                self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(preliminary))
+            if self.app_state['role_selected']:
+                main_page = self.parent_stack.findChild(QWidget, "MainPage")
+                if main_page:
+                    self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(main_page))
+            else:
+                preliminary = self.parent_stack.findChild(QWidget, "PreliminaryPage")
+                if preliminary:
+                    self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(preliminary))
 
     def reset_form(self):
         """Clear all form inputs."""

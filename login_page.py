@@ -118,11 +118,11 @@ class LoginPage(QWidget):
             QMessageBox.critical(self, "Login failed", str(exc))
             return
 
-        if response.type != "LOGIN_OK" or not response.payload:
+        if response.get("type") != "LOGIN_OK" or not response.get("payload"):
             QMessageBox.warning(self, "Login failed", "Invalid username or password.")
             return
 
-        user = response.payload
+        user = response["payload"]
         self.app_state['authenticated'] = True
         self.app_state['user_id'] = user.get("user_id")
         self.app_state['name'] = user.get("name")
@@ -130,13 +130,20 @@ class LoginPage(QWidget):
         self.app_state['is_driver'] = user.get("is_driver")
         self.app_state['area'] = user.get("area")
         self.app_state['username'] = user.get("username")
+        self.app_state['role_selected'] = user.get("role_selected", False)
+        self.app_state['role'] = "driver" if user.get("is_driver") else "passenger"
 
         if self.parent_stack:
-            preliminary = self.parent_stack.findChild(QWidget, "PreliminaryPage")
-            if preliminary:
-                self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(preliminary))
+            if self.app_state['role_selected']:
+                main_page = self.parent_stack.findChild(QWidget, "MainPage")
+                if main_page:
+                    self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(main_page))
+                else:
+                    QMessageBox.warning(self, "Navigation error", "Main page not found.")
             else:
-                QMessageBox.warning(self, "Navigation error", "Preliminary page not found.")
+                preliminary = self.parent_stack.findChild(QWidget, "PreliminaryPage")
+                if preliminary:
+                    self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(preliminary))
 
     def go_to_register(self):
         if self.parent_stack:

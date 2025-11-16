@@ -6,6 +6,8 @@ from PyQt5.QtGui import QFont # type: ignore
 from PyQt5.QtCore import Qt # type: ignore
 from logo_widget import get_logo_label, AUBUS_MAROON
 from ui_styles import style_button, set_title_label
+from api_client import ApiClientError
+from PyQt5.QtWidgets import QMessageBox  # type: ignore
 
 class PreliminaryPage(QWidget):
     def __init__(self, parent_stack=None, app_state=None):
@@ -59,11 +61,22 @@ class PreliminaryPage(QWidget):
         self.setLayout(outer)
 
     def choose_role(self, role):
+        api = self.app_state.get("api")
+        user_id = self.app_state.get("user_id")
+        if not api or not user_id:
+            QMessageBox.warning(self, "Not ready", "Please log in again.")
+            return
+        try:
+            api.set_role(user_id, role, self.app_state.get("area"))
+        except ApiClientError as exc:
+            QMessageBox.critical(self, "Unable to save", str(exc))
+            return
         self.app_state['role'] = role
-        # navigate to main page (index depends on app stacking order)
+        self.app_state['role_selected'] = True
         if self.parent_stack:
-            # assume main page is present and named "MainPage"
-            self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(self.parent_stack.findChild(QWidget, "MainPage")))
+            main_page = self.parent_stack.findChild(QWidget, "MainPage")
+            if main_page:
+                self.parent_stack.setCurrentIndex(self.parent_stack.indexOf(main_page))
 
     def reset_role(self):
         """Clear the role selection from app state."""

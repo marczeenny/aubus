@@ -3,9 +3,9 @@
 # Weather widget is a placeholder; a real API integration should replace 'refresh_weather' behavior.
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMessageBox # type: ignore
-from PyQt5.QtGui import QFont # type: ignore
-from logo_widget import get_logo_label, AUBUS_MAROON
+from logo_widget import get_logo_label
 from ui_styles import set_title_label, style_button
+from api_client import ApiClientError
 
 class ProgressPage(QWidget):
     def __init__(self, app_state=None, on_ride_end=None):
@@ -40,7 +40,7 @@ class ProgressPage(QWidget):
 
         # Weather panel
         layout.addWidget(QLabel("Weather (demo):"))
-        self.weather_label = QLabel("Temperature: -- °C\nWind: -- m/s\nForecast: --")
+        self.weather_label = QLabel("Temperature: -- deg C\nWind: -- m/s\nForecast: --")
         layout.addWidget(self.weather_label)
         self.refresh_weather_btn = QPushButton("Refresh Weather (placeholder)")
         self.refresh_weather_btn.clicked.connect(self.refresh_weather)
@@ -51,24 +51,47 @@ class ProgressPage(QWidget):
 
     def load_ride(self, ride_info):
         """
-        Called when a ride becomes active. ride_info is a dict with keys like 'place', 'time', 'accepted_by' etc.
+        Called when a ride becomes active. ride_info is a dict with keys like 'place', 'time', 'partner_name', etc.
         """
         self.ride_info = ride_info
         self.ride_started = False  # Reset ride started flag
+        role = ride_info.get("role", "passenger")
+        self.start_btn.setVisible(role == "driver")
+        self.start_btn.setEnabled(role == "driver")
         self.end_btn.setEnabled(False)  # Disable end button until ride starts
-        s = f"Ride to {ride_info.get('place')} at {ride_info.get('time')}\nPartner: {ride_info.get('accepted_by')}"
+        partner = ride_info.get('partner_name') or ride_info.get('accepted_by')
+        s = f"Ride to {ride_info.get('place')} at {ride_info.get('time')}\nPartner: {partner}\nRole: {role}"
         self.info_label.setText(s)
 
     def start_ride(self):
-        # TODO: notify backend / peers
-        QMessageBox.information(self, "Ride started", "Ride marked as started (demo).")
+        if self.ride_info.get("role") != "driver":
+            return
+        api = self.app_state.get("api")
+        ride_id = self.ride_info.get("ride_id")
+        if not api or not ride_id:
+            QMessageBox.warning(self, "No ride", "Cannot start ride without an active ride.")
+            return
+        try:
+            api.start_ride(ride_id)
+        except ApiClientError as exc:
+            QMessageBox.critical(self, "Unable to start", str(exc))
+            return
+        QMessageBox.information(self, "Ride started", "Ride marked as started.")
         self.ride_started = True
         self.end_btn.setEnabled(True)  # Enable end button once ride is started
 
     def end_ride(self):
-        # TODO: notify backend / peers, mark ride complete
-        QMessageBox.information(self, "Ride ended", "Ride marked as completed (demo).")
-        # Call the callback to return to ride tab
+        api = self.app_state.get("api")
+        ride_id = self.ride_info.get("ride_id")
+        if not api or not ride_id:
+            QMessageBox.warning(self, "No ride", "Cannot end ride without an active ride.")
+            return
+        try:
+            api.complete_ride(ride_id)
+        except ApiClientError as exc:
+            QMessageBox.critical(self, "Unable to end ride", str(exc))
+            return
+        QMessageBox.information(self, "Ride ended", "Ride marked as completed.")
         if self.on_ride_end:
             self.on_ride_end()
 
@@ -76,5 +99,5 @@ class ProgressPage(QWidget):
         # Placeholder: replace with real weather API call (OpenWeatherMap etc.)
         # Example: call your own server which calls OWM and returns JSON, then set weather_label accordingly.
         # For now show demo values:
-        demo = "Temperature: 24 °C\nWind: 3.2 m/s\nForecast: Partly cloudy"
+        demo = "Temperature: 24 deg C\nWind: 3.2 m/s\nForecast: Partly cloudy"
         self.weather_label.setText(demo)

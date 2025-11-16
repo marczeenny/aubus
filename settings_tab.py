@@ -6,6 +6,7 @@ from PyQt5.QtGui import QFont # type: ignore
 from PyQt5.QtCore import Qt # type: ignore
 from logo_widget import AUBUS_MAROON
 from ui_styles import set_title_label, style_button, style_input
+from api_client import ApiClientError
 
 class SettingsTab(QWidget):
     def __init__(self, app_state=None, on_logout=None):
@@ -69,9 +70,24 @@ class SettingsTab(QWidget):
         self.setLayout(outer)
 
     def save_settings(self):
-        self.app_state['area'] = self.area_input.text().strip()
-        self.app_state['role'] = self.role_box.currentText()
-        QMessageBox.information(self, "Saved", "Settings saved locally. Integrate with backend to persist.")
+        api = self.app_state.get("api")
+        user_id = self.app_state.get("user_id")
+        if not api or not user_id:
+            QMessageBox.warning(self, "Not authenticated", "Please log in again.")
+            return
+        area = self.area_input.text().strip()
+        role = self.role_box.currentText()
+        try:
+            api.set_role(user_id, role, area)
+        except ApiClientError as exc:
+            QMessageBox.critical(self, "Unable to save", str(exc))
+            return
+        self.app_state['area'] = area
+        self.app_state['role'] = role
+        self.app_state['role_selected'] = True
+        QMessageBox.information(self, "Saved", "Settings updated. Please restart (or log in again) to apply.")
+        if self.on_logout:
+            self.on_logout()
 
     def logout(self):
         # Clear auth flag while preserving API client reference
