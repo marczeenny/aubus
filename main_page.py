@@ -131,7 +131,8 @@ class MainPage(QWidget):
         is_driver = self.app_state.get("role") == "driver" or self.app_state.get("is_driver")
         index = self.tabs.indexOf(self.schedule_tab)
         if is_driver and index == -1:
-            self.tabs.insertTab(1, self.schedule_tab)
+            # insertTab requires a label (or icon+label). Provide a label to avoid TypeError.
+            self.tabs.insertTab(1, self.schedule_tab, "Schedule")
             if not initial:
                 self.schedule_tab.refresh_entries()
         elif not is_driver and index != -1:
