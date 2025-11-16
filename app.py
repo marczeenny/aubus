@@ -29,7 +29,7 @@ def build_app():
         app_state['peer_port'] = None
 
     stack = QStackedWidget()
-    stack.setWindowTitle("AUBus - Frontend Demo")
+    stack.setWindowTitle("AUBus - The Best Carpooling Service")
     stack.resize(800, 600)
 
     # Create pages and add them to the stack
