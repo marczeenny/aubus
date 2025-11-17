@@ -253,6 +253,14 @@ def handle_start_ride(conn, p):
     ride_id = p["ride_id"]
     with db_lock:
         start_ride(ride_id)
+        ride = get_ride_by_id(ride_id)
+        if ride:
+            passenger = get_user_by_id(ride.get("passenger_id"))
+            driver = get_user_by_id(ride.get("driver_id"))
+            if passenger:
+                send_to_username(passenger["username"], {"type": "RIDE_STARTED", "payload": {"ride_id": ride_id}})
+            if driver:
+                send_to_username(driver["username"], {"type": "RIDE_STARTED", "payload": {"ride_id": ride_id}})
     send_json(conn, {"type": "START_RIDE_OK"})
 
 
@@ -260,7 +268,48 @@ def handle_complete_ride(conn, p):
     ride_id = p["ride_id"]
     with db_lock:
         complete_ride(ride_id)
+        ride = get_ride_by_id(ride_id)
+        if ride:
+            passenger = get_user_by_id(ride.get("passenger_id"))
+            driver = get_user_by_id(ride.get("driver_id"))
+            if passenger:
+                send_to_username(passenger["username"], {"type": "RIDE_COMPLETED", "payload": {"ride_id": ride_id}})
+            if driver:
+                send_to_username(driver["username"], {"type": "RIDE_COMPLETED", "payload": {"ride_id": ride_id}})
     send_json(conn, {"type": "COMPLETE_RIDE_OK"})
+
+
+def handle_cancel_ride(conn, p):
+    """
+    Cancel a ride (passenger leaves before start, or driver removes passenger).
+    Notifies the other party when possible.
+    """
+    ride_id = p.get("ride_id")
+    if ride_id is None:
+        send_json(conn, {"type": "CANCEL_RIDE_FAIL", "payload": {"reason": "ride_id missing"}})
+        return
+    with db_lock:
+        ride = get_ride_by_id(ride_id)
+        if not ride:
+            send_json(conn, {"type": "CANCEL_RIDE_FAIL", "payload": {"reason": "ride not found"}})
+            return
+        # Only allow cancelling if ride hasn't completed
+        if ride.get("status") == "COMPLETED":
+            send_json(conn, {"type": "CANCEL_RIDE_FAIL", "payload": {"reason": "ride already completed"}})
+            return
+        update_ride_status(ride_id, "CANCELLED")
+        # notify counterpart if connected
+        passenger = get_user_by_id(ride.get("passenger_id"))
+        driver = get_user_by_id(ride.get("driver_id"))
+        if passenger and driver:
+            # notify both
+            send_to_username(passenger["username"], {"type": "RIDE_CANCELLED", "payload": {"ride_id": ride_id}})
+            send_to_username(driver["username"], {"type": "RIDE_CANCELLED", "payload": {"ride_id": ride_id}})
+        elif passenger:
+            send_to_username(passenger["username"], {"type": "RIDE_CANCELLED", "payload": {"ride_id": ride_id}})
+        elif driver:
+            send_to_username(driver["username"], {"type": "RIDE_CANCELLED", "payload": {"ride_id": ride_id}})
+    send_json(conn, {"type": "CANCEL_RIDE_OK"})
 
 
 def handle_list_contacts(conn, p):
@@ -336,6 +385,8 @@ def handle_client(conn, addr):
                 handle_driver_response(conn, p)
             elif t == "FETCH_RIDES":
                 handle_fetch_rides(conn, p)
+            elif t == "CANCEL_RIDE":
+                handle_cancel_ride(conn, p)
             elif t == "UPDATE_RATING":
                 handle_update_rating(conn, p)
             elif t == "START_RIDE":

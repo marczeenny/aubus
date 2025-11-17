@@ -240,6 +240,10 @@ def save_ride(passenger_id, driver_id, day, time, area, status="PENDING"):
 
 
 def create_ride_request(passenger_id, direction, day, time, area, driver_ids):
+    # Do not create a ride request if there are no drivers to offer to.
+    if not driver_ids:
+        return None
+
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
@@ -293,10 +297,12 @@ def update_ride_status(ride_id, status):
 def get_user_rides(user_id):
     conn = get_conn()
     c = conn.cursor()
+    # Include a count of ride_offers so we can filter out stray PENDING rides with no offers
     c.execute("""
         SELECT r.id, r.passenger_id, p.name, r.driver_id, d.name, r.day, r.time,
                r.area, r.status, r.completed_at, r.started_at, r.requested_at,
-               (SELECT rating FROM ratings WHERE ride_id=r.id AND rater_user_id=?)
+               (SELECT rating FROM ratings WHERE ride_id=r.id AND rater_user_id=?),
+               (SELECT COUNT(*) FROM ride_offers ro WHERE ro.ride_id=r.id) as offer_count
         FROM rides r
         LEFT JOIN users p ON r.passenger_id = p.id
         LEFT JOIN users d ON r.driver_id = d.id
@@ -307,7 +313,10 @@ def get_user_rides(user_id):
     conn.close()
     rides = []
     for row in rows:
-        ride_id, passenger_id, passenger_name, driver_id, driver_name, day, time, area, status, completed_at, started_at, requested_at, rating = row
+        ride_id, passenger_id, passenger_name, driver_id, driver_name, day, time, area, status, completed_at, started_at, requested_at, rating, offer_count = row
+        # Skip stray PENDING rides that have no recorded ride_offers (likely created in error)
+        if status == 'PENDING' and driver_id is None and offer_count == 0:
+            continue
         role = "passenger" if user_id == passenger_id else "driver"
         partner_name = driver_name if role == "passenger" else passenger_name
         can_rate = False

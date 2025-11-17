@@ -2,11 +2,12 @@
 # Main hub page with tabs: Ride, Previous, Settings, Messages.
 # The RideTab has a callback to navigate to the ProgressPage when a ride is accepted.
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTabWidget # type: ignore
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTabWidget, QMessageBox # type: ignore
 from PyQt5.QtCore import QTimer, Qt # type: ignore
 from logo_widget import get_logo_label, AUBUS_MAROON
 from ui_styles import set_title_label
 from ride_tab import RideTab
+from ride_tab import CurrentRidesTab
 from schedule_tab import ScheduleTab
 from previous_tab import PreviousTab
 from messages_tab import MessagesTab
@@ -20,6 +21,11 @@ class MainPage(QWidget):
         self.setObjectName("MainPage")
         self.parent_stack = parent_stack
         self.app_state = app_state or {}
+        # expose main page to app_state so child tabs can refresh main tabs
+        try:
+            self.app_state["main_page"] = self
+        except Exception:
+            pass
         self.login_page = None  # Will be set by app.py if needed
         self.init_ui()
 
@@ -34,10 +40,12 @@ class MainPage(QWidget):
         # Ride tab - pass a callback to open progress page
         self.progress_page = ProgressPage(self.app_state, on_ride_end=self.hide_progress)
         self.ride_tab = RideTab(app_state=self.app_state, go_to_progress=self.show_progress)
+        self.current_rides_tab = CurrentRidesTab(app_state=self.app_state, go_to_progress=self.show_progress)
         self.schedule_tab = ScheduleTab(self.app_state)
         self.previous_tab = PreviousTab(self.app_state)
         self.messages_tab = MessagesTab(self.app_state)
         self.tabs.addTab(self.ride_tab, "Ride")
+        # Current Rides tab is added dynamically for drivers by update_schedule_tab_visibility
         self.update_schedule_tab_visibility(initial=True)
         self.tabs.addTab(self.previous_tab, "Previous")
         self.tabs.addTab(self.messages_tab, "Messages")
@@ -78,6 +86,12 @@ class MainPage(QWidget):
         self.app_state.pop("current_ride", None)
         if hasattr(self, "messages_tab"):
             self.messages_tab.clear_active_ride()
+        # Update passenger request button state after a ride ends
+        if hasattr(self.ride_tab, 'update_request_button_state'):
+            try:
+                self.ride_tab.update_request_button_state()
+            except Exception:
+                pass
 
     def reset_all_pages(self):
         """Reset all tabs and pages to their initial state."""
@@ -127,10 +141,35 @@ class MainPage(QWidget):
             return
         self.update_schedule_tab_visibility()
         for event in api.drain_events():
-            if event.type in {"RIDE_REQUEST", "DRIVER_RESPONSE", "RIDE_CREATED"}:
+            if event.type in {"RIDE_REQUEST", "DRIVER_RESPONSE", "RIDE_CREATED", "RIDE_UNAVAILABLE", "DRIVER_RESPONSE"}:
                 self.ride_tab.handle_event(event)
+            # Refresh current rides tab when ride state changes
+            if hasattr(self, 'current_rides_tab') and event.type in {"DRIVER_RESPONSE", "RIDE_STARTED", "RIDE_COMPLETED", "RIDE_CANCELLED", "RIDE_REQUEST", "RIDE_UNAVAILABLE"}:
+                try:
+                    self.current_rides_tab.refresh_list()
+                except Exception:
+                    pass
             if event.type in {"CHAT_MESSAGE", "CONTACTS", "MESSAGES", "CONNECTION_LOST"}:
                 self.messages_tab.handle_event(event)
+            # Ride lifecycle notifications for progress page
+            if event.type == "RIDE_STARTED":
+                rid = event.payload.get("ride_id")
+                cur = self.app_state.get("current_ride")
+                if cur and cur.get("ride_id") == rid:
+                    cur["status"] = "STARTED"
+                    self.progress_page.load_ride(cur)
+            if event.type == "RIDE_COMPLETED":
+                rid = event.payload.get("ride_id")
+                cur = self.app_state.get("current_ride")
+                if cur and cur.get("ride_id") == rid:
+                    QMessageBox.information(self, "Ride completed", "The ride has been completed.")
+                    self.hide_progress()
+            if event.type == "RIDE_CANCELLED":
+                rid = event.payload.get("ride_id")
+                cur = self.app_state.get("current_ride")
+                if cur and cur.get("ride_id") == rid:
+                    QMessageBox.information(self, "Ride cancelled", "This ride was cancelled.")
+                    self.hide_progress()
 
     def update_schedule_tab_visibility(self, initial=False):
         is_driver = self.app_state.get("role") == "driver" or self.app_state.get("is_driver")
@@ -138,7 +177,16 @@ class MainPage(QWidget):
         if is_driver and index == -1:
             # insertTab requires a label (or icon+label). Provide a label to avoid TypeError.
             self.tabs.insertTab(1, self.schedule_tab, "Schedule")
+            # also insert Current Rides tab after Ride
+            try:
+                self.tabs.insertTab(2, self.current_rides_tab, "Current Ride")
+            except Exception:
+                pass
             if not initial:
                 self.schedule_tab.refresh_entries()
         elif not is_driver and index != -1:
             self.tabs.removeTab(index)
+            # remove current rides tab if present
+            cr_index = self.tabs.indexOf(self.current_rides_tab)
+            if cr_index != -1:
+                self.tabs.removeTab(cr_index)

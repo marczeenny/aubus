@@ -133,6 +133,9 @@ class ApiClient:
     def complete_ride(self, ride_id: int) -> Dict[str, Any]:
         return self._send_and_wait("COMPLETE_RIDE", {"ride_id": ride_id}, expected={"COMPLETE_RIDE_OK"})
 
+    def cancel_ride(self, ride_id: int) -> Dict[str, Any]:
+        return self._send_and_wait("CANCEL_RIDE", {"ride_id": ride_id}, expected={"CANCEL_RIDE_OK", "CANCEL_RIDE_FAIL"})
+
     def list_contacts(self, user_id: int) -> Dict[str, Any]:
         return self._send_and_wait("LIST_CONTACTS", {"user_id": user_id}, expected={"CONTACTS"})
 
