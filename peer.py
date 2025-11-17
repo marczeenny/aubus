@@ -5,8 +5,6 @@ from typing import Callable, Optional
 
 class PeerServer:
     """Listens for incoming peer connections and dispatches JSON messages to a callback.
-
-    callback signature: fn(peer_addr, message_dict)
     """
     def __init__(self, host='0.0.0.0', port=0, on_message: Optional[Callable]=None):
         self.host = host
