@@ -28,11 +28,17 @@ class SettingsTab(QWidget):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        # Area change
-        self.area_input = QLineEdit()
-        self.area_input.setPlaceholderText("Area (e.g. Ras Beirut)")
-        self.area_input.setText(self.app_state.get('area', ''))
-        style_input(self.area_input, width=320)
+        # Area change (use dropdown)
+        self.area_input = QComboBox()
+        areas = ["-- Select Area --", "Beirut", "Batroun", "Tripoli", "Saida", "Baalbek", "Zahle", "Nabatieh", "Metn"]
+        self.area_input.addItems(areas)
+        current_area = self.app_state.get('area', "-- Select Area --")
+        idx = self.area_input.findText(current_area)
+        if idx >= 0:
+            self.area_input.setCurrentIndex(idx)
+        else:
+            self.area_input.setCurrentIndex(0)
+        self.area_input.setFixedWidth(320)
         layout.addWidget(self.area_input, alignment=Qt.AlignCenter)
 
         # Role selection
@@ -75,7 +81,7 @@ class SettingsTab(QWidget):
         if not api or not user_id:
             QMessageBox.warning(self, "Not authenticated", "Please log in again.")
             return
-        area = self.area_input.text().strip()
+        area = self.area_input.currentText().strip()
         role = self.role_box.currentText()
         try:
             api.set_role(user_id, role, area)
@@ -95,7 +101,7 @@ class SettingsTab(QWidget):
         self.app_state.clear()
         if api:
             self.app_state["api"] = api
-        self.area_input.clear()
+        self.area_input.setCurrentIndex(0)
         self.role_box.setCurrentIndex(0)
         if self.on_logout:
             self.on_logout()

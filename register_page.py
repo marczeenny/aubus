@@ -63,11 +63,17 @@ class RegisterPage(QWidget):
         style_input(self.password_confirm)
         layout.addWidget(self.password_confirm, alignment=Qt.AlignCenter)
 
-        # Area input (for drivers)
-        self.area_input = QLineEdit()
-        self.area_input.setPlaceholderText("Your area (e.g., Beirut, Jbeil)")
-        style_input(self.area_input)
+        # Area input (for drivers) - use controlled dropdown to avoid typos
+        self.area_input = QComboBox()
+        areas = ["-- Select Area --", "Beirut", "Batroun", "Tripoli", "Saida", "Baalbek", "Zahle", "Nabatieh", "Metn"]
+        self.area_input.addItems(areas)
+        # If app_state already has an area, pre-select it
+        current_area = self.app_state.get('area') or "-- Select Area --"
+        idx = self.area_input.findText(current_area)
+        if idx >= 0:
+            self.area_input.setCurrentIndex(idx)
         self.area_input.setVisible(True)
+        self.area_input.setFixedWidth(300)
         layout.addWidget(self.area_input, alignment=Qt.AlignCenter)
 
         # Role selection
@@ -165,11 +171,11 @@ class RegisterPage(QWidget):
             return
 
         role = "driver" if self.driver_radio.isChecked() else "passenger"
-        area = self.area_input.text().strip()
+        area = self.area_input.currentText().strip()
         schedule = None
 
-        if not area:
-            QMessageBox.warning(self, "Area required", "Please enter your area.")
+        if not area or area == "-- Select Area --":
+            QMessageBox.warning(self, "Area required", "Please select your area from the list.")
             return
 
         if role == "driver":
@@ -239,3 +245,8 @@ class RegisterPage(QWidget):
         self.email_input.clear()
         self.password_input.clear()
         self.password_confirm.clear()
+        # reset area combo
+        try:
+            self.area_input.setCurrentIndex(0)
+        except Exception:
+            pass

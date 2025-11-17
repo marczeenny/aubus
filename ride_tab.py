@@ -161,7 +161,10 @@ class RideTab(QWidget):
         main_page = self.app_state.get("main_page")
         if main_page and hasattr(main_page, 'current_rides_tab'):
             try:
+                # Refresh immediately and again after a short delay to allow the server to finish updates
                 main_page.current_rides_tab.refresh_list()
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(350, lambda: main_page.current_rides_tab.refresh_list())
             except Exception:
                 pass
 
@@ -275,12 +278,27 @@ class RideTab(QWidget):
 
     def reset_form(self):
         """Clear form and matches list."""
+        # Clearing widgets may be called when the UI was previously torn down;
+        # guard against deleted C/C++ wrapped objects by catching runtime errors.
         if hasattr(self, 'matches_list'):
-            self.matches_list.clear()
+            try:
+                self.matches_list.clear()
+            except Exception:
+                pass
         if hasattr(self, 'requests_list'):
-            self.requests_list.clear()
-        if hasattr(self, 'from_uni_radio'):
-            self.from_uni_radio.setChecked(True)
+            try:
+                self.requests_list.clear()
+            except Exception:
+                pass
+        try:
+            if getattr(self, 'from_uni_radio', None) is not None:
+                try:
+                    self.from_uni_radio.setChecked(True)
+                except Exception:
+                    # widget may have been deleted by UI teardown
+                    pass
+        except Exception:
+            pass
         self.driver_results = []
 
     def update_request_button_state(self):

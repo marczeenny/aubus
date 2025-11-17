@@ -50,8 +50,14 @@ class ScheduleTab(QWidget):
         self.direction_box.addItems(DIRECTIONS)
         form.addWidget(self.direction_box)
 
-        self.area_input = QLineEdit()
-        self.area_input.setPlaceholderText("Area (e.g. Ras Beirut)")
+        self.area_input = QComboBox()
+        areas = ["-- Select Area --", "Beirut", "Batroun", "Tripoli", "Saida", "Baalbek", "Zahle", "Nabatieh", "Metn"]
+        self.area_input.addItems(areas)
+        # preselect app_state area if available
+        current_area = self.app_state.get('area', "-- Select Area --")
+        idx = self.area_input.findText(current_area)
+        if idx >= 0:
+            self.area_input.setCurrentIndex(idx)
         style_input(self.area_input, width=160)
         form.addWidget(self.area_input)
 
@@ -98,8 +104,8 @@ class ScheduleTab(QWidget):
         day = self.day_box.currentText()
         time_value = self.time_input.text().strip()
         direction = self.direction_box.currentText()
-        area = self.area_input.text().strip()
-        if not time_value or not area:
+        area = self.area_input.currentText().strip()
+        if not time_value or not area or area == "-- Select Area --":
             QMessageBox.warning(self, "Missing fields", "Please provide time and area.")
             return
         try:
@@ -108,7 +114,10 @@ class ScheduleTab(QWidget):
             QMessageBox.critical(self, "Unable to add", str(exc))
             return
         self.time_input.clear()
-        self.area_input.clear()
+        try:
+            self.area_input.setCurrentIndex(0)
+        except Exception:
+            pass
         self.refresh_entries()
 
     def refresh_entries(self):
