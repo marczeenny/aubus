@@ -79,6 +79,16 @@ def init_db():
         )
     """)
 
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS ride_offers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ride_id INTEGER NOT NULL,
+            driver_id INTEGER NOT NULL,
+            FOREIGN KEY(ride_id) REFERENCES rides(id),
+            FOREIGN KEY(driver_id) REFERENCES users(id)
+        )
+    """)
+
     _ensure_column(c, "users", "role_selected", "INTEGER DEFAULT 0")
     _ensure_column(c, "rides", "requested_at", "TEXT DEFAULT CURRENT_TIMESTAMP")
     _ensure_column(c, "rides", "started_at", "TEXT")
@@ -100,12 +110,18 @@ def _ensure_column(cursor, table, column, definition):
 # -----------------------------
 # Users
 # -----------------------------
-def add_user(name, email, username, password):
+def add_user(name, email, username, password, role, area=None, schedule=None):
     try:
         conn = get_conn()
         c = conn.cursor()
-        c.execute("INSERT INTO users (name, email, username, password) VALUES (?, ?, ?, ?)",
-                  (name, email, username, password))
+        is_driver = 1 if role == "driver" else 0
+        c.execute("INSERT INTO users (name, email, username, password, is_driver, area, role_selected) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (name, email, username, password, is_driver, area, 1))
+        user_id = c.lastrowid
+        if is_driver and schedule:
+            for day, routes in schedule.items():
+                for route, time in routes.items():
+                    add_schedule(user_id, day, time, route, area, conn=conn)
         conn.commit()
         conn.close()
         return True
@@ -167,13 +183,19 @@ def set_user_role(user_id, role, area):
 # -----------------------------
 # Schedule
 # -----------------------------
-def add_schedule(user_id, day, time, direction, area):
-    conn = get_conn()
+def add_schedule(user_id, day, time, direction, area, conn=None):
+    should_close = False
+    if conn is None:
+        conn = get_conn()
+        should_close = True
+
     c = conn.cursor()
     c.execute("INSERT INTO schedules (user_id, day, time, direction, area) VALUES (?, ?, ?, ?, ?)",
               (user_id, day, time, direction, area))
-    conn.commit()
-    conn.close()
+    
+    if should_close:
+        conn.commit()
+        conn.close()
 
 
 def get_schedule_entries(user_id):
@@ -215,6 +237,33 @@ def save_ride(passenger_id, driver_id, day, time, area, status="PENDING"):
     ride_id = c.lastrowid
     conn.close()
     return ride_id
+
+
+def create_ride_request(passenger_id, direction, day, time, area, driver_ids):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO rides (passenger_id, driver_id, day, time, area, status, requested_at)
+        VALUES (?, NULL, ?, ?, ?, 'PENDING', ?)
+    """, (passenger_id, day, time, area, datetime.utcnow().isoformat()))
+    ride_id = c.lastrowid
+    for driver_id in driver_ids:
+        c.execute("INSERT INTO ride_offers (ride_id, driver_id) VALUES (?, ?)", (ride_id, driver_id))
+    conn.commit()
+    conn.close()
+    return ride_id
+
+
+def accept_ride_request(ride_id, driver_id):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("SELECT driver_id FROM ride_offers WHERE ride_id=?", (ride_id,))
+    other_driver_ids = [row[0] for row in c.fetchall() if row[0] != driver_id]
+    c.execute("UPDATE rides SET driver_id=?, status='ACCEPTED' WHERE id=?", (driver_id, ride_id))
+    c.execute("DELETE FROM ride_offers WHERE ride_id=?", (ride_id,))
+    conn.commit()
+    conn.close()
+    return other_driver_ids
 
 
 def start_ride(ride_id):
@@ -299,6 +348,21 @@ def get_pending_rides_for_driver(driver_id):
     return pending
 
 
+def get_ride_requests_for_driver(driver_id):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        SELECT r.id, r.passenger_id, p.name, r.area, r.time, r.day
+        FROM ride_offers ro
+        JOIN rides r ON ro.ride_id = r.id
+        JOIN users p ON r.passenger_id = p.id
+        WHERE ro.driver_id=? AND r.status='PENDING'
+    """, (driver_id,))
+    requests = [{"ride_id": row[0], "passenger_id": row[1], "passenger_name": row[2], "direction": row[3], "time": row[4], "day": row[5]} for row in c.fetchall()]
+    conn.close()
+    return requests
+
+
 def get_ride_by_id(ride_id):
     conn = get_conn()
     c = conn.cursor()
@@ -324,22 +388,74 @@ def get_ride_by_id(ride_id):
     }
 
 
-def get_drivers_in_area_time(area, day, time, min_rating=0):
+def find_drivers(direction, day, time_str, passenger_area, min_rating=0):
+    print(f"find_drivers called with: direction={direction}, day={day}, time_str={time_str}, passenger_area={passenger_area}, min_rating={min_rating}")
+    try:
+        time_obj = datetime.strptime(time_str, "%H:%M").time()
+    except Exception as e:
+        print(f"[find_drivers] failed to parse time '{time_str}': {e}")
+        return []
+    time_plus_15 = (datetime.combine(datetime.today(), time_obj) + timedelta(minutes=15)).time()
+
+    # Normalize direction/area for case and underscore differences (e.g. 'to_AUB' vs 'To University')
+    norm_direction = (direction or "").lower().replace('_', ' ').strip()
+    norm_area = (passenger_area or "").lower().strip()
+
     conn = get_conn()
     c = conn.cursor()
-    c.execute("""
-        SELECT u.id, u.name, u.username,
-               COALESCE(AVG(r.rating),0) as avg_rating,
-               u.area, s.time
-        FROM users u
-        LEFT JOIN ratings r ON u.id = r.rated_user_id AND r.role='driver'
-        JOIN schedules s ON u.id = s.user_id
-        WHERE u.is_driver=1 AND u.area=? AND s.day=? AND s.time>=?
-        GROUP BY u.id
-        HAVING avg_rating >= ?
-    """, (area, day, time, min_rating))
-    drivers = c.fetchall()
-    conn.close()
+
+    drivers = []
+    # Prepare SQL and params so we can log them before execution
+    if time_plus_15 < time_obj:  # Midnight crossover
+        next_day_str = (datetime.strptime(day, "%A") + timedelta(days=1)).strftime("%A")
+        # compare lower(replace(...)) to handle underscores and case differences
+        sql = """
+            SELECT u.id, u.name, u.username,
+                   COALESCE(AVG(r.rating),0) as avg_rating,
+                   u.area, s.time
+            FROM users u
+            LEFT JOIN ratings r ON u.id = r.rated_user_id AND r.role='driver'
+            JOIN schedules s ON u.id = s.user_id
+            WHERE u.is_driver=1
+              AND lower(replace(s.direction, '_', ' '))=?
+              AND lower(replace(s.area, '_', ' '))=?
+              AND (
+                (s.day=? AND s.time >= ?) OR
+                (s.day=? AND s.time < ?)
+              )
+            GROUP BY u.id
+            HAVING avg_rating >= ?
+        """
+        params = (norm_direction, norm_area, day, time_obj.strftime("%H:%M"), next_day_str, time_plus_15.strftime("%H:%M"), min_rating)
+    else:
+        sql = """
+            SELECT u.id, u.name, u.username,
+                   COALESCE(AVG(r.rating),0) as avg_rating,
+                   u.area, s.time
+            FROM users u
+            LEFT JOIN ratings r ON u.id = r.rated_user_id AND r.role='driver'
+            JOIN schedules s ON u.id = s.user_id
+            WHERE u.is_driver=1
+              AND lower(replace(s.direction, '_', ' '))=?
+              AND s.day=? AND s.time >= ? AND s.time < ?
+              AND lower(replace(s.area, '_', ' '))=?
+            GROUP BY u.id
+            HAVING avg_rating >= ?
+        """
+        params = (norm_direction, day, time_obj.strftime("%H:%M"), time_plus_15.strftime("%H:%M"), norm_area, min_rating)
+
+    print(f"[find_drivers] SQL params: {params}")
+    try:
+        c.execute(sql, params)
+        drivers = c.fetchall()
+        print(f"[find_drivers] SQL returned {len(drivers)} rows")
+        for row in drivers:
+            print(f"[find_drivers] row: {row}")
+    except Exception as e:
+        print(f"[find_drivers] SQL execution error: {e}")
+    finally:
+        conn.close()
+
     return [{"id": d[0], "name": d[1], "username": d[2], "rating": d[3], "area": d[4], "time": d[5]} for d in drivers]
 
 

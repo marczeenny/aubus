@@ -16,7 +16,7 @@ from ui_styles import set_title_label, style_button, style_input
 from api_client import ApiClientError
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-DIRECTIONS = ["to_AUB", "from_AUB"]
+DIRECTIONS = ["To University", "From University"]
 
 
 class ScheduleTab(QWidget):

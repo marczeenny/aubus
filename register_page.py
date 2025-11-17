@@ -3,7 +3,7 @@
 # Contains logo, name, email, password, password confirmation, and Register button.
 # Basic client-side validation is included (matching passwords, simple email check).
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QHBoxLayout # type: ignore
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QHBoxLayout, QRadioButton, QGridLayout, QComboBox # type: ignore
 from PyQt5.QtGui import QFont # type: ignore
 from PyQt5.QtCore import Qt # type: ignore
 from logo_widget import get_logo_label, AUBUS_MAROON
@@ -63,6 +63,30 @@ class RegisterPage(QWidget):
         style_input(self.password_confirm)
         layout.addWidget(self.password_confirm, alignment=Qt.AlignCenter)
 
+        # Area input (for drivers)
+        self.area_input = QLineEdit()
+        self.area_input.setPlaceholderText("Your area (e.g., Beirut, Jbeil)")
+        style_input(self.area_input)
+        self.area_input.setVisible(True)
+        layout.addWidget(self.area_input, alignment=Qt.AlignCenter)
+
+        # Role selection
+        role_layout = QHBoxLayout()
+        self.passenger_radio = QRadioButton("Passenger")
+        self.driver_radio = QRadioButton("Driver")
+        self.passenger_radio.setChecked(True)  # Default to passenger
+        role_layout.addWidget(self.passenger_radio)
+        role_layout.addWidget(self.driver_radio)
+        layout.addLayout(role_layout)
+
+
+        # Schedule widget (hidden by default)
+        self.schedule_widget = self._create_schedule_grid()
+        self.schedule_widget.setVisible(False)
+        layout.addWidget(self.schedule_widget)
+
+        self.driver_radio.toggled.connect(self.schedule_widget.setVisible)
+
         # Register button
         register_btn = QPushButton("Register")
         register_btn.clicked.connect(self.on_register_clicked)
@@ -86,6 +110,41 @@ class RegisterPage(QWidget):
 
         self.setLayout(outer)
 
+    def _generate_time_slots(self):
+        slots = []
+        for hour in range(24):
+            for minute in range(0, 60, 15):
+                slots.append(f"{hour:02d}:{minute:02d}")
+        return slots
+
+    def _create_schedule_grid(self):
+        schedule_widget = QWidget()
+        grid_layout = QGridLayout()
+        grid_layout.setSpacing(10)
+
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        self.routes = {"To University": "area_to_uni", "From University": "uni_to_area"}
+        route_labels = list(self.routes.keys())
+
+        # Header
+        grid_layout.addWidget(QLabel("Day"), 0, 0)
+        grid_layout.addWidget(QLabel(route_labels[0]), 0, 1)
+        grid_layout.addWidget(QLabel(route_labels[1]), 0, 2)
+
+        time_slots = self._generate_time_slots()
+        self.schedule_inputs = {}
+
+        for i, day in enumerate(days):
+            grid_layout.addWidget(QLabel(day), i + 1, 0)
+            for j, route in enumerate(route_labels):
+                combo = QComboBox()
+                combo.addItems(["-"] + time_slots)
+                grid_layout.addWidget(combo, i + 1, j + 1)
+                self.schedule_inputs[(day, route)] = combo
+
+        schedule_widget.setLayout(grid_layout)
+        return schedule_widget
+
     def on_register_clicked(self):
         # Basic validation only
         name = self.name_input.text().strip()
@@ -105,13 +164,30 @@ class RegisterPage(QWidget):
             QMessageBox.warning(self, "Password mismatch", "Passwords do not match.")
             return
 
+        role = "driver" if self.driver_radio.isChecked() else "passenger"
+        area = self.area_input.text().strip()
+        schedule = None
+
+        if not area:
+            QMessageBox.warning(self, "Area required", "Please enter your area.")
+            return
+
+        if role == "driver":
+            schedule = {}
+            for (day, route), combo in self.schedule_inputs.items():
+                time = combo.currentText()
+                if time != "-":
+                    if day not in schedule:
+                        schedule[day] = {}
+                    schedule[day][route] = time
+
         api = self.app_state.get("api")
         if not api:
             QMessageBox.critical(self, "Configuration error", "API client not initialized.")
             return
 
         try:
-            response = api.register(name=name, email=email, username=email, password=pw)
+            response = api.register(name=name, email=email, username=email, password=pw, role=role, area=area, schedule=schedule)
         except ApiClientError as exc:
             QMessageBox.critical(self, "Registration failed", str(exc))
             return

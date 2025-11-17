@@ -3,15 +3,16 @@
 # The RideTab has a callback to navigate to the ProgressPage when a ride is accepted.
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTabWidget # type: ignore
-from PyQt5.QtCore import QTimer # type: ignore
+from PyQt5.QtCore import QTimer, Qt # type: ignore
 from logo_widget import get_logo_label, AUBUS_MAROON
 from ui_styles import set_title_label
 from ride_tab import RideTab
 from schedule_tab import ScheduleTab
 from previous_tab import PreviousTab
-from settings_tab import SettingsTab
 from messages_tab import MessagesTab
 from progress_page import ProgressPage
+from PyQt5.QtWidgets import QPushButton # type: ignore
+from ui_styles import style_button
 
 class MainPage(QWidget):
     def __init__(self, parent_stack=None, app_state=None):
@@ -36,12 +37,16 @@ class MainPage(QWidget):
         self.schedule_tab = ScheduleTab(self.app_state)
         self.previous_tab = PreviousTab(self.app_state)
         self.messages_tab = MessagesTab(self.app_state)
-        self.settings_tab = SettingsTab(self.app_state, on_logout=self.logout)
         self.tabs.addTab(self.ride_tab, "Ride")
         self.update_schedule_tab_visibility(initial=True)
         self.tabs.addTab(self.previous_tab, "Previous")
-        self.tabs.addTab(self.settings_tab, "Settings")
         self.tabs.addTab(self.messages_tab, "Messages")
+
+        # Add a visible logout button instead of a Settings tab
+        logout_btn = QPushButton("Logout")
+        logout_btn.clicked.connect(self.logout)
+        style_button(logout_btn)
+        layout.addWidget(logout_btn, alignment=Qt.AlignRight)
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
         layout.addWidget(self.tabs)

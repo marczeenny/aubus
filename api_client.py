@@ -64,8 +64,13 @@ class ApiClient:
     # -----------------------------
     # Public API
     # -----------------------------
-    def register(self, name: str, email: str, username: str, password: str) -> Dict[str, Any]:
-        return self._send_once("REGISTER", {"name": name, "email": email, "username": username, "password": password})
+    def register(self, name: str, email: str, username: str, password: str, role: str, area: Optional[str] = None, schedule: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        payload = {"name": name, "email": email, "username": username, "password": password, "role": role}
+        if area:
+            payload["area"] = area
+        if schedule:
+            payload["schedule"] = schedule
+        return self._send_once("REGISTER", payload)
 
     def login(self, username: str, password: str) -> Dict[str, Any]:
         self.connect()
@@ -88,6 +93,9 @@ class ApiClient:
     def delete_schedule_entry(self, user_id: int, schedule_id: int) -> Dict[str, Any]:
         return self._send_and_wait("DELETE_SCHEDULE", {"user_id": user_id, "schedule_id": schedule_id}, expected={"DELETE_SCHEDULE_OK"})
 
+    def broadcast_ride_request(self, passenger_id: int, direction: str, day: str, time: str, area: str) -> Dict[str, Any]:
+        return self._send_and_wait("BROADCAST_RIDE_REQUEST", {"passenger_id": passenger_id, "direction": direction, "day": day, "time": time, "area": area}, expected={"BROADCAST_OK", "NO_DRIVERS_FOUND"})
+
     def request_drivers(self, area: str, day: str, time: str, min_rating: int = 0) -> Dict[str, Any]:
         return self._send_and_wait("REQUEST_RIDE", {"area": area, "day": day, "time": time, "min_rating": min_rating}, expected={"DRIVER_LIST"})
 
@@ -102,6 +110,9 @@ class ApiClient:
 
     def fetch_pending_rides(self, driver_id: int) -> Dict[str, Any]:
         return self._send_and_wait("FETCH_PENDING", {"driver_id": driver_id}, expected={"PENDING_RIDES"})
+
+    def fetch_ride_requests(self, driver_id: int) -> Dict[str, Any]:
+        return self._send_and_wait("FETCH_RIDE_REQUESTS", {"driver_id": driver_id}, expected={"RIDE_REQUEST_LIST"})
 
     def respond_to_ride(self, ride_id: int, status: str) -> Dict[str, Any]:
         return self._send_and_wait("DRIVER_RESPONSE", {"ride_id": ride_id, "status": status}, expected={"DRIVER_RESPONSE_OK"})

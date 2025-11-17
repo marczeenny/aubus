@@ -12,7 +12,10 @@ from database import (
     get_schedule_entries,
     delete_schedule_entry,
     delete_schedule_for_user,
-    get_drivers_in_area_time,
+    find_drivers,
+    create_ride_request,
+    accept_ride_request,
+    get_ride_requests_for_driver,
     save_ride,
     start_ride,
     complete_ride,
@@ -64,8 +67,11 @@ def handle_register(conn, p):
     email = p["email"]
     username = p["username"]
     password = hash_password(p["password"])
+    role = p["role"]
+    area = p.get("area")
+    schedule = p.get("schedule")
     with db_lock:
-        success = add_user(name, email, username, password)
+        success = add_user(name, email, username, password, role, area, schedule)
     if success:
         send_json(conn, {"type": "REGISTER_OK"})
     else:
@@ -90,9 +96,13 @@ def handle_set_role(conn, p):
     role = p["role"]
     area = p.get("area")
     with db_lock:
+        current = get_user_by_id(user_id)
+        # Prevent downgrading an existing driver to passenger
+        if current and current.get("is_driver") and role != "driver":
+            send_json(conn, {"type": "SET_ROLE_FAIL", "payload": {"reason": "Cannot change from driver to passenger"}})
+            return
+        # Allow upgrades (passenger -> driver) and updates to role/area
         set_user_role(user_id, role, area)
-        if role != "driver":
-            delete_schedule_for_user(user_id)
     send_json(conn, {"type": "SET_ROLE_OK"})
 
 
@@ -114,36 +124,34 @@ def handle_delete_schedule(conn, p):
     send_json(conn, {"type": "DELETE_SCHEDULE_OK"})
 
 
-def handle_request_ride(conn, p):
-    with db_lock:
-        drivers = get_drivers_in_area_time(p["area"], p["day"], p["time"], p.get("min_rating", 0))
-    send_json(conn, {"type": "DRIVER_LIST", "payload": {"drivers": drivers}})
-
-
-def handle_create_ride(conn, p):
+def handle_broadcast_ride_request(conn, p):
     passenger_id = p["passenger_id"]
-    driver_id = p["driver_id"]
+    direction = p["direction"]
     day = p["day"]
     time = p["time"]
-    area = p["area"]
+    area = p["area"] # Extract area from payload
     with db_lock:
-        ride_id = save_ride(passenger_id, driver_id, day, time, area, status="REQUESTED")
-        driver = get_user_by_id(driver_id)
+        drivers = find_drivers(direction, day, time, area) # Pass area to find_drivers
+        if not drivers:
+            send_json(conn, {"type": "NO_DRIVERS_FOUND"})
+            return
+
+        driver_ids = [driver["id"] for driver in drivers]
+        ride_id = create_ride_request(passenger_id, direction, day, time, area, driver_ids)
         passenger = get_user_by_id(passenger_id)
-    send_json(conn, {"type": "RIDE_CREATED", "payload": {"ride_id": ride_id}})
-    if driver:
-        send_to_username(driver["username"], {
-            "type": "RIDE_REQUEST",
-            "payload": {
-                "ride_id": ride_id,
-                "passenger_id": passenger_id,
-                "passenger_username": passenger["username"] if passenger else None,
-                "passenger_name": passenger["name"] if passenger else None,
-                "area": area,
-                "day": day,
-                "time": time
-            }
-        })
+
+        for driver in drivers:
+            send_to_username(driver["username"], {
+                "type": "RIDE_REQUEST",
+                "payload": {
+                    "ride_id": ride_id,
+                    "passenger_id": passenger_id,
+                    "passenger_name": passenger["name"] if passenger else "Unknown",
+                    "direction": direction,
+                    "time": time,
+                }
+            })
+    send_json(conn, {"type": "BROADCAST_OK", "payload": {"ride_id": ride_id}})
 
 
 def handle_fetch_pending(conn, p):
@@ -153,20 +161,60 @@ def handle_fetch_pending(conn, p):
     send_json(conn, {"type": "PENDING_RIDES", "payload": {"rides": pending}})
 
 
+def handle_fetch_ride_requests(conn, p):
+    driver_id = p["driver_id"]
+    with db_lock:
+        requests = get_ride_requests_for_driver(driver_id)
+    send_json(conn, {"type": "RIDE_REQUEST_LIST", "payload": {"requests": requests}})
+
+
 def handle_driver_response(conn, p):
-    ride_id = p["ride_id"]
-    status = p["status"]
+    # validate payload fields and try to infer missing driver_id from the connection
+    ride_id = p.get("ride_id")
+    status = p.get("status")
+    driver_id = p.get("driver_id")
+
+    if ride_id is None or status is None:
+        send_json(conn, {"type": "DRIVER_RESPONSE_OK", "payload": {"status": "ERROR", "reason": "missing ride_id or status"}})
+        return
+
+    # If driver_id not provided by client, try to infer it from the connection's registered username
+    if driver_id is None:
+        inferred = None
+        for uname, info in clients.items():
+            if info.get("conn") is conn:
+                inferred = info.get("user_id")
+                break
+        if inferred is not None:
+            driver_id = inferred
+        else:
+            send_json(conn, {"type": "DRIVER_RESPONSE_OK", "payload": {"status": "ERROR", "reason": "driver_id missing and could not be inferred"}})
+            return
     with db_lock:
         ride = get_ride_by_id(ride_id)
-        passenger = get_user_by_id(ride["passenger_id"]) if ride else None
-        if ride:
-            update_ride_status(ride_id, status)
-    if passenger:
-        send_to_username(passenger["username"], {"type": "DRIVER_RESPONSE", "payload": {"ride_id": ride_id, "status": status}})
-    if status == "ACCEPTED":
-        send_json(conn, {"type": "DRIVER_RESPONSE_OK", "payload": {"ride_id": ride_id}})
-    else:
-        send_json(conn, {"type": "DRIVER_RESPONSE_OK"})
+        if not ride or ride["status"] != "PENDING":
+            # Ride already taken or cancelled
+            send_json(conn, {"type": "DRIVER_RESPONSE_OK", "payload": {"status": "CLOSED"}})
+            return
+
+        if status == "ACCEPTED":
+            other_driver_ids = accept_ride_request(ride_id, driver_id)
+            passenger = get_user_by_id(ride["passenger_id"])
+            if passenger:
+                send_to_username(passenger["username"], {"type": "DRIVER_RESPONSE", "payload": {"ride_id": ride_id, "status": "ACCEPTED"}})
+
+            for other_driver_id in other_driver_ids:
+                other_driver = get_user_by_id(other_driver_id)
+                if other_driver:
+                    send_to_username(other_driver["username"], {"type": "RIDE_UNAVAILABLE", "payload": {"ride_id": ride_id}})
+            send_json(conn, {"type": "DRIVER_RESPONSE_OK", "payload": {"status": "ACCEPTED"}})
+        else: # DENIED
+            # We just notify the passenger that one of the drivers denied.
+            # The request is still open to other drivers.
+            passenger = get_user_by_id(ride["passenger_id"])
+            if passenger:
+                send_to_username(passenger["username"], {"type": "DRIVER_RESPONSE", "payload": {"ride_id": ride_id, "status": "DENIED"}})
+            send_json(conn, {"type": "DRIVER_RESPONSE_OK", "payload": {"status": "DENIED"}})
 
 
 def handle_fetch_rides(conn, p):
@@ -278,10 +326,10 @@ def handle_client(conn, addr):
                 handle_list_schedule(conn, p)
             elif t == "DELETE_SCHEDULE":
                 handle_delete_schedule(conn, p)
-            elif t == "REQUEST_RIDE":
-                handle_request_ride(conn, p)
-            elif t == "CREATE_RIDE":
-                handle_create_ride(conn, p)
+            elif t == "BROADCAST_RIDE_REQUEST":
+                handle_broadcast_ride_request(conn, p)
+            elif t == "FETCH_RIDE_REQUESTS":
+                handle_fetch_ride_requests(conn, p)
             elif t == "FETCH_PENDING":
                 handle_fetch_pending(conn, p)
             elif t == "DRIVER_RESPONSE":
