@@ -1,6 +1,8 @@
 import socket
 import threading
 import hashlib
+import argparse
+import sys
 from datetime import datetime, timedelta
 
 from database import (
@@ -34,7 +36,7 @@ from protocol import recv_json, send_json
 
 HOST = '0.0.0.0'
 PORT = 5555
-clients = {}      # username -> {"conn": socket, "addr": addr, "user_id": int}
+clients = {}      # username -> {"conn": socket, "addr": addr, "user_id": int, "peer": {"ip": str, "port": int}}
 db_lock = threading.Lock()
 RATING_WINDOW = timedelta(hours=36)
 
@@ -89,6 +91,26 @@ def handle_login(conn, p):
     else:
         send_json(conn, {"type": "LOGIN_FAIL"})
         return None, None
+
+
+def handle_announce_peer(conn, p, username, addr):
+    """Record a client's peer listening port (for P2P)."""
+    if not username:
+        send_json(conn, {"type": "ANNOUNCE_FAIL", "payload": {"reason": "Not authenticated"}})
+        return
+    port = p.get("port")
+    if not port:
+        send_json(conn, {"type": "ANNOUNCE_FAIL", "payload": {"reason": "port missing"}})
+        return
+    # store peer info for username
+    info = clients.get(username, {})
+    info["peer"] = {"ip": addr[0], "port": int(port)}
+    clients[username] = info
+    try:
+        print(f"[Server] ANNOUNCE_PEER from {username} at {addr[0]}:{port}")
+    except Exception:
+        pass
+    send_json(conn, {"type": "ANNOUNCE_OK"})
 
 
 def handle_set_role(conn, p):
@@ -200,8 +222,20 @@ def handle_driver_response(conn, p):
         if status == "ACCEPTED":
             other_driver_ids = accept_ride_request(ride_id, driver_id)
             passenger = get_user_by_id(ride["passenger_id"])
+            # Include driver's peer IP/port in the notification when available
+            driver_user = get_user_by_id(driver_id)
+            peer_info = None
+            if driver_user:
+                info = clients.get(driver_user.get('username'), {})
+                peer_info = info.get('peer') if info else None
+            payload = {"ride_id": ride_id, "status": "ACCEPTED"}
+            if peer_info:
+                payload["driver_ip"] = peer_info.get("ip")
+                payload["driver_port"] = peer_info.get("port")
+            if driver_user:
+                payload["driver_username"] = driver_user.get("username")
             if passenger:
-                send_to_username(passenger["username"], {"type": "DRIVER_RESPONSE", "payload": {"ride_id": ride_id, "status": "ACCEPTED"}})
+                send_to_username(passenger["username"], {"type": "DRIVER_RESPONSE", "payload": payload})
 
             for other_driver_id in other_driver_ids:
                 other_driver = get_user_by_id(other_driver_id)
@@ -383,6 +417,8 @@ def handle_client(conn, addr):
                 handle_fetch_pending(conn, p)
             elif t == "DRIVER_RESPONSE":
                 handle_driver_response(conn, p)
+            elif t == "ANNOUNCE_PEER":
+                handle_announce_peer(conn, p, username, addr)
             elif t == "FETCH_RIDES":
                 handle_fetch_rides(conn, p)
             elif t == "CANCEL_RIDE":
@@ -423,4 +459,10 @@ def start_server():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="AUBus server")
+    parser.add_argument("--port", type=int, help="Port to listen on", default=5555)
+    parser.add_argument("--host", type=str, help="Host to bind to", default='0.0.0.0')
+    args = parser.parse_args()
+    PORT = args.port
+    HOST = args.host
     start_server()

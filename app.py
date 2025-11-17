@@ -10,12 +10,23 @@ from register_page import RegisterPage
 from preliminary_page import PreliminaryPage
 from main_page import MainPage
 from api_client import ApiClient
+from peer import PeerServer
 
 def build_app():
     app = QApplication(sys.argv)
 
     # Shared application state (in-memory). Holds authenticated user info and API client.
     app_state = {"api": ApiClient()}
+
+    # Start a peer server for P2P chat; store in app_state so pages can register callbacks.
+    peer = PeerServer(host='0.0.0.0', port=0, on_message=None)
+    try:
+        peer_port = peer.start()
+        app_state['peer_server'] = peer
+        app_state['peer_port'] = peer_port
+    except Exception:
+        app_state['peer_server'] = None
+        app_state['peer_port'] = None
 
     stack = QStackedWidget()
     stack.setWindowTitle("AUBus - Frontend Demo")

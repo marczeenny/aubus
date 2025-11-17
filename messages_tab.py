@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (
 
 from ui_styles import set_title_label, style_button, style_input
 from api_client import ApiClientError
+from peer import peer_send
 
 
 class MessagesTab(QWidget):
@@ -78,6 +79,10 @@ class MessagesTab(QWidget):
             self.status_label.setText(f"Unable to load contacts: {exc}")
             return
         contacts = response.get("payload", {}).get("contacts", [])
+        try:
+            print(f"[MessagesTab] refresh_contacts: loaded {len(contacts)} contacts")
+        except Exception:
+            pass
         if self.active_ride_contact:
             username = self.active_ride_contact.get("username")
             if username:
@@ -161,6 +166,31 @@ class MessagesTab(QWidget):
         if not api:
             QMessageBox.warning(self, "Not ready", "Please log in again.")
             return
+        # Attempt peer-to-peer send if we have peer info for this contact
+        peer_ip = self.current_contact.get('peer_ip') or self.current_contact.get('peer_address')
+        peer_port = self.current_contact.get('peer_port')
+        if peer_ip and peer_port:
+            try:
+                try:
+                    print(f"[MessagesTab] attempting P2P send to {peer_ip}:{peer_port}")
+                except Exception:
+                    pass
+                peer_send(peer_ip, int(peer_port), {"type": "CHAT_PEER", "payload": {"from": self.app_state.get('username'), "body": text}})
+                try:
+                    print(f"[MessagesTab] P2P send to {peer_ip}:{peer_port} succeeded (no exception)")
+                except Exception:
+                    pass
+                payload = {"sender_id": self.app_state.get("user_id"), "receiver_id": self.current_contact.get("id"), "body": text, "sent_at": ""}
+                self._append_message(self.current_contact, payload)
+                self.message_input.clear()
+                return
+            except Exception:
+                try:
+                    print(f"[MessagesTab] P2P send to {peer_ip}:{peer_port} failed, falling back to server")
+                except Exception:
+                    pass
+                pass
+
         try:
             response = api.send_message(self.current_contact["username"], text)
         except ApiClientError as exc:
@@ -169,7 +199,7 @@ class MessagesTab(QWidget):
         if response.get("type") == "SEND_MESSAGE_OK":
             payload = {
                 "sender_id": self.app_state.get("user_id"),
-                "receiver_id": self.current_contact["id"],
+                "receiver_id": self.current_contact.get("id"),
                 "body": text,
                 "sent_at": response.get("payload", {}).get("sent_at", "")
             }
@@ -179,6 +209,33 @@ class MessagesTab(QWidget):
             reason = response.get("payload", {}).get("reason", "")
             QMessageBox.warning(self, "Unable to send", f"Server rejected the message: {reason}")
 
+    # Called by PeerServer when a peer sends a message directly
+    def handle_peer_message(self, addr, msg):
+        if not isinstance(msg, dict):
+            return
+        if msg.get('type') != 'CHAT_PEER':
+            return
+        payload = msg.get('payload', {})
+        from_username = payload.get('from')
+        body = payload.get('body')
+        if not from_username or body is None:
+            return
+        contact = self._ensure_contact(from_username)
+        entry = {
+            'sender_id': None,
+            'receiver_id': self.app_state.get('user_id'),
+            'body': body,
+            'sent_at': ''
+        }
+        if self.current_contact and self.current_contact.get('username') == from_username:
+            self._append_message(contact or {'username': from_username}, entry)
+        else:
+            self.unread_contacts.add(from_username)
+            if contact is None:
+                contact = {'username': from_username, 'name': from_username}
+            self.active_ride_contact = contact
+            self.refresh_contacts(preserve_selection=True)
+
     def _append_message(self, contact, message_entry):
         user_id = self.app_state.get("user_id")
         sender_id = message_entry.get("sender_id")
@@ -186,15 +243,31 @@ class MessagesTab(QWidget):
         prefix = "You" if sender_id == user_id else contact.get("name") or contact.get("username")
         line = f"[{sent_at}] {prefix}: {message_entry.get('body')}"
         self.chat_history.append(line)
+        try:
+            print(f"[MessagesTab] appended message to chat_history: {line}")
+        except Exception:
+            pass
 
     def handle_event(self, event):
+        try:
+            print(f"[MessagesTab] handle_event: {event.type} payload={event.payload}")
+        except Exception:
+            pass
         if event.type == "CHAT_MESSAGE":
             payload = event.payload
             username = payload.get("from")
             if not username:
+                try:
+                    print("[MessagesTab] CHAT_MESSAGE with no from field")
+                except Exception:
+                    pass
                 return
             contact = self._ensure_contact(username)
             if not contact:
+                try:
+                    print(f"[MessagesTab] CHAT_MESSAGE from {username} but contact not found after ensure_contact")
+                except Exception:
+                    pass
                 return
             entry = {
                 "sender_id": payload.get("from_id"),
@@ -212,7 +285,11 @@ class MessagesTab(QWidget):
         elif event.type == "MESSAGES" and self.current_contact:
             self.load_conversation(self.current_contact)
         elif event.type == "CONNECTION_LOST":
-            self.status_label.setText("Connection lost. Messages may be delayed.")
+            # Suppress alarming UI message; keep an internal debug print instead.
+            try:
+                print("[MessagesTab] Event: CONNECTION_LOST received — server connection lost")
+            except Exception:
+                pass
 
     def _ensure_contact(self, username):
         contact = self.username_lookup.get(username)
@@ -231,6 +308,11 @@ class MessagesTab(QWidget):
             name = ride_info.get("partner_name") or username
             if partner_id and username:
                 contact = {"id": partner_id, "username": username, "name": name}
+                # include peer info if available on the ride_info
+                if ride_info.get('driver_ip'):
+                    contact['peer_ip'] = ride_info.get('driver_ip')
+                if ride_info.get('driver_port'):
+                    contact['peer_port'] = ride_info.get('driver_port')
         if contact != self.active_ride_contact:
             self.active_ride_contact = contact
             self.refresh_contacts(preserve_selection=True)

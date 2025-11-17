@@ -44,14 +44,7 @@ class ProgressPage(QWidget):
         row.addWidget(self.leave_btn)
         layout.addLayout(row)
 
-        # Weather panel
-        layout.addWidget(QLabel("Weather (demo):"))
-        self.weather_label = QLabel("Temperature: -- deg C\nWind: -- m/s\nForecast: --")
-        layout.addWidget(self.weather_label)
-        self.refresh_weather_btn = QPushButton("Refresh Weather (placeholder)")
-        self.refresh_weather_btn.clicked.connect(self.refresh_weather)
-        style_button(self.refresh_weather_btn)
-        layout.addWidget(self.refresh_weather_btn)
+        # (Weather removed from this page — kept in Main page only)
 
         self.setLayout(layout)
 

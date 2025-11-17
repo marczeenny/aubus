@@ -133,6 +133,18 @@ class LoginPage(QWidget):
         self.app_state['role_selected'] = user.get("role_selected", False)
         self.app_state['role'] = "driver" if user.get("is_driver") else "passenger"
 
+        # Announce our peer listening port (if peer server was started)
+        api = self.app_state.get('api')
+        peer_port = self.app_state.get('peer_port')
+        if api and peer_port:
+            try:
+                resp = api.announce_peer(peer_port)
+                try:
+                    print(f"[LoginPage] announce_peer response: {resp}")
+                except Exception:
+                    pass
+            except Exception:
+                pass
         if self.parent_stack:
             if self.app_state['role_selected']:
                 main_page = self.parent_stack.findChild(QWidget, "MainPage")

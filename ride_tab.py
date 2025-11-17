@@ -261,6 +261,10 @@ class RideTab(QWidget):
                             rides = resp.get("payload", {}).get("rides", [])
                             for r in rides:
                                 if r.get("ride_id") == ride_id:
+                                    # Attach peer connection info from the driver response (if provided)
+                                    r["driver_ip"] = payload.get("driver_ip")
+                                    r["driver_port"] = payload.get("driver_port")
+                                    r["partner_username"] = payload.get("driver_username")
                                     if self.go_to_progress:
                                         r["role"] = "passenger"
                                         self.go_to_progress(r)

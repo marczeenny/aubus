@@ -72,6 +72,14 @@ class ApiClient:
             payload["schedule"] = schedule
         return self._send_once("REGISTER", payload)
 
+    def announce_peer(self, port: int) -> Dict[str, Any]:
+        """Tell the server which local TCP port this client listens on for P2P chat."""
+        try:
+            return self._send_and_wait("ANNOUNCE_PEER", {"port": port}, expected={"ANNOUNCE_OK", "ANNOUNCE_FAIL"})
+        except ApiClientError:
+            # best effort; return failure dict
+            return {"type": "ANNOUNCE_FAIL", "payload": {"reason": "could not announce"}}
+
     def login(self, username: str, password: str) -> Dict[str, Any]:
         self.connect()
         resp = self._send_and_wait("LOGIN", {"username": username, "password": password}, expected={"LOGIN_OK", "LOGIN_FAIL"})

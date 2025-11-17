@@ -4,6 +4,7 @@
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTabWidget, QMessageBox # type: ignore
 from PyQt5.QtCore import QTimer, Qt # type: ignore
+import requests
 from logo_widget import get_logo_label, AUBUS_MAROON
 from ui_styles import set_title_label
 from ride_tab import RideTab
@@ -36,6 +37,18 @@ class MainPage(QWidget):
         set_title_label(title, size=16)
         layout.addWidget(title)
 
+        # Simple weather display (uses Open-Meteo free API)
+        self.weather_label = QLabel("Weather: unknown")
+        layout.addWidget(self.weather_label)
+        # start a periodic weather refresh
+        try:
+            self._update_weather()
+        except Exception:
+            pass
+        self.weather_timer = QTimer(self)
+        self.weather_timer.timeout.connect(self._update_weather)
+        self.weather_timer.start(10 * 60 * 1000)  # every 10 minutes
+
         self.tabs = QTabWidget()
         # Ride tab - pass a callback to open progress page
         self.progress_page = ProgressPage(self.app_state, on_ride_end=self.hide_progress)
@@ -44,6 +57,13 @@ class MainPage(QWidget):
         self.schedule_tab = ScheduleTab(self.app_state)
         self.previous_tab = PreviousTab(self.app_state)
         self.messages_tab = MessagesTab(self.app_state)
+        # Register peer message callback if peer server is available
+        peer_server = self.app_state.get('peer_server')
+        if peer_server:
+            try:
+                peer_server.on_message = self.messages_tab.handle_peer_message
+            except Exception:
+                pass
         self.tabs.addTab(self.ride_tab, "Ride")
         # Current Rides tab is added dynamically for drivers by update_schedule_tab_visibility
         self.update_schedule_tab_visibility(initial=True)
@@ -190,3 +210,20 @@ class MainPage(QWidget):
             cr_index = self.tabs.indexOf(self.current_rides_tab)
             if cr_index != -1:
                 self.tabs.removeTab(cr_index)
+
+    def _update_weather(self):
+        # For demo, use Beirut coordinates; map area -> coords could be added.
+        try:
+            url = "https://api.open-meteo.com/v1/forecast?latitude=33.9&longitude=35.5&current_weather=true"
+            r = requests.get(url, timeout=3.0)
+            if r.status_code == 200:
+                data = r.json()
+                cw = data.get('current_weather', {})
+                temp = cw.get('temperature')
+                wind = cw.get('windspeed')
+                if temp is not None:
+                    self.weather_label.setText(f"Weather: {temp}°C, wind {wind} km/h")
+                    return
+        except Exception:
+            pass
+        self.weather_label.setText("Weather: unavailable")
