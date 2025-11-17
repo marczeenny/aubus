@@ -94,6 +94,7 @@ def init_db():
     _ensure_column(c, "rides", "started_at", "TEXT")
     _ensure_column(c, "rides", "completed_at", "TEXT")
     _ensure_column(c, "schedules", "area", "TEXT")
+    _ensure_column(c, "users", "min_rating", "INTEGER DEFAULT 0")
 
     conn.commit()
     conn.close()
@@ -152,30 +153,33 @@ def authenticate_user(username, password):
 def get_user_by_username(username):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT id, name, email, username, is_driver, area FROM users WHERE username=?", (username,))
+    c.execute("SELECT id, name, email, username, is_driver, area, min_rating FROM users WHERE username=?", (username,))
     row = c.fetchone()
     conn.close()
     if not row:
         return None
-    return {"id": row[0], "name": row[1], "email": row[2], "username": row[3], "is_driver": bool(row[4]), "area": row[5]}
+    return {"id": row[0], "name": row[1], "email": row[2], "username": row[3], "is_driver": bool(row[4]), "area": row[5], "min_rating": row[6]}
 
 
 def get_user_by_id(user_id):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT id, name, email, username, is_driver, area FROM users WHERE id=?", (user_id,))
+    c.execute("SELECT id, name, email, username, is_driver, area, min_rating FROM users WHERE id=?", (user_id,))
     row = c.fetchone()
     conn.close()
     if not row:
         return None
-    return {"id": row[0], "name": row[1], "email": row[2], "username": row[3], "is_driver": bool(row[4]), "area": row[5]}
+    return {"id": row[0], "name": row[1], "email": row[2], "username": row[3], "is_driver": bool(row[4]), "area": row[5], "min_rating": row[6]}
 
 
-def set_user_role(user_id, role, area):
+def set_user_role(user_id, role, area, min_rating=None):
     conn = get_conn()
     c = conn.cursor()
     is_driver = 1 if role == "driver" else 0
-    c.execute("UPDATE users SET is_driver=?, area=?, role_selected=1 WHERE id=?", (is_driver, area, user_id))
+    if min_rating is None:
+        c.execute("UPDATE users SET is_driver=?, area=?, role_selected=1 WHERE id=?", (is_driver, area, user_id))
+    else:
+        c.execute("UPDATE users SET is_driver=?, area=?, role_selected=1, min_rating=? WHERE id=?", (is_driver, area, int(min_rating), user_id))
     conn.commit()
     conn.close()
 

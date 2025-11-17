@@ -31,6 +31,7 @@ from database import (
     list_contacts,
     get_ride_by_id,
     update_ride_status,
+    get_average_rating,
 )
 from protocol import recv_json, send_json
 
@@ -117,6 +118,7 @@ def handle_set_role(conn, p):
     user_id = p["user_id"]
     role = p["role"]
     area = p.get("area")
+    min_rating = p.get("min_rating")
     with db_lock:
         current = get_user_by_id(user_id)
         # Prevent downgrading an existing driver to passenger
@@ -124,7 +126,7 @@ def handle_set_role(conn, p):
             send_json(conn, {"type": "SET_ROLE_FAIL", "payload": {"reason": "Cannot change from driver to passenger"}})
             return
         # Allow upgrades (passenger -> driver) and updates to role/area
-        set_user_role(user_id, role, area)
+        set_user_role(user_id, role, area, min_rating=min_rating)
     send_json(conn, {"type": "SET_ROLE_OK"})
 
 
@@ -153,16 +155,34 @@ def handle_broadcast_ride_request(conn, p):
     time = p["time"]
     area = p["area"] # Extract area from payload
     with db_lock:
-        drivers = find_drivers(direction, day, time, area) # Pass area to find_drivers
+        # Enforce passenger's minimum-driver-rating preference and drivers' minimum-passenger-rating preference.
+        passenger = get_user_by_id(passenger_id)
+        passenger_min = passenger.get("min_rating", 0) if passenger else 0
+        passenger_avg = get_average_rating(passenger_id, 'passenger') if passenger else 0
+
+        # Find drivers whose average driver rating >= passenger's preferred minimum
+        drivers = find_drivers(direction, day, time, area, min_rating=passenger_min)
         if not drivers:
             send_json(conn, {"type": "NO_DRIVERS_FOUND"})
             return
 
-        driver_ids = [driver["id"] for driver in drivers]
-        ride_id = create_ride_request(passenger_id, direction, day, time, area, driver_ids)
-        passenger = get_user_by_id(passenger_id)
+        # Filter out drivers who have set a min_rating higher than the passenger's average rating
+        eligible_drivers = []
+        for d in drivers:
+            drv_user = get_user_by_id(d["id"])
+            drv_min = drv_user.get("min_rating", 0) if drv_user else 0
+            if passenger_avg >= drv_min:
+                eligible_drivers.append(d)
 
-        for driver in drivers:
+        if not eligible_drivers:
+            # No drivers meet both sides' minimum-rating constraints
+            send_json(conn, {"type": "NO_DRIVERS_FOUND"})
+            return
+
+        driver_ids = [driver["id"] for driver in eligible_drivers]
+        ride_id = create_ride_request(passenger_id, direction, day, time, area, driver_ids)
+
+        for driver in eligible_drivers:
             send_to_username(driver["username"], {
                 "type": "RIDE_REQUEST",
                 "payload": {

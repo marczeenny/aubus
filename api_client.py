@@ -89,8 +89,11 @@ class ApiClient:
             self.user_id = payload.get("user_id")
         return resp
 
-    def set_role(self, user_id: int, role: str, area: Optional[str]) -> Dict[str, Any]:
-        return self._send_and_wait("SET_ROLE", {"user_id": user_id, "role": role, "area": area}, expected={"SET_ROLE_OK"})
+    def set_role(self, user_id: int, role: str, area: Optional[str], min_rating: Optional[int] = None) -> Dict[str, Any]:
+        payload = {"user_id": user_id, "role": role, "area": area}
+        if min_rating is not None:
+            payload["min_rating"] = int(min_rating)
+        return self._send_and_wait("SET_ROLE", payload, expected={"SET_ROLE_OK"})
 
     def add_schedule(self, user_id: int, day: str, time: str, direction: str, area: str) -> Dict[str, Any]:
         return self._send_and_wait("ADD_SCHEDULE", {"user_id": user_id, "day": day, "time": time, "direction": direction, "area": area}, expected={"ADD_SCHEDULE_OK"})

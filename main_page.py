@@ -15,6 +15,7 @@ from messages_tab import MessagesTab
 from progress_page import ProgressPage
 from PyQt5.QtWidgets import QPushButton # type: ignore
 from ui_styles import style_button
+from settings_tab import SettingsTab
 
 class MainPage(QWidget):
     def __init__(self, parent_stack=None, app_state=None):
@@ -57,6 +58,7 @@ class MainPage(QWidget):
         self.schedule_tab = ScheduleTab(self.app_state)
         self.previous_tab = PreviousTab(self.app_state)
         self.messages_tab = MessagesTab(self.app_state)
+        self.settings_tab = SettingsTab(app_state=self.app_state)
         # Register peer message callback if peer server is available
         peer_server = self.app_state.get('peer_server')
         if peer_server:
@@ -68,6 +70,7 @@ class MainPage(QWidget):
         # Current Rides tab is added dynamically for drivers by update_schedule_tab_visibility
         self.update_schedule_tab_visibility(initial=True)
         self.tabs.addTab(self.previous_tab, "Previous")
+        self.tabs.addTab(self.settings_tab, "Settings")
         self.tabs.addTab(self.messages_tab, "Messages")
 
         # Add a visible logout button instead of a Settings tab
