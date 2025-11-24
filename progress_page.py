@@ -66,8 +66,54 @@ class ProgressPage(QWidget):
             self.leave_btn.setEnabled(ride_info.get("status") != "STARTED")
         else:
             self.leave_btn.setVisible(False)
-        partner = ride_info.get('partner_name') or ride_info.get('accepted_by')
-        s = f"Ride to {ride_info.get('place')} at {ride_info.get('time')}\nPartner: {partner}\nRole: {role}"
+        # Determine partner display. For passengers show their driver; for drivers show
+        # a summary of current passengers (avoid showing a single "first" passenger).
+        partner = None
+        if role == 'driver':
+            # Try to fetch all accepted/started rides for this driver and list passenger names
+            api = self.app_state.get('api')
+            user_id = self.app_state.get('user_id')
+            passengers = []
+            if api and user_id:
+                try:
+                    resp = api.fetch_rides(user_id)
+                    rides = resp.get('payload', {}).get('rides', [])
+                    # collect partner names for rides where this user is driver and status is ACCEPTED or STARTED
+                    for r in rides:
+                        if r.get('role') == 'driver' and r.get('status') in ("ACCEPTED", "STARTED"):
+                            name = r.get('partner_name') or r.get('passenger_name') or r.get('partner_username')
+                            if name:
+                                passengers.append(name)
+                except Exception:
+                    passengers = []
+            if passengers:
+                if len(passengers) == 1:
+                    partner = passengers[0]
+                else:
+                    partner = f"Passengers ({len(passengers)}): {', '.join(passengers)}"
+            else:
+                # Fallback to ride_info fields if fetch failed or no passengers found
+                partner = ride_info.get('partner_name') or ride_info.get('accepted_by') or 'Passengers'
+        else:
+            # passenger view — show the driver name if available
+            partner = ride_info.get('partner_name') or ride_info.get('accepted_by') or ride_info.get('partner_username') or 'Driver'
+
+        # Determine a sensible destination string. Prefer explicit 'place', then 'area',
+        # then try to infer from 'direction' (e.g. contains 'University'), otherwise default.
+        place = ride_info.get('place')
+        if not place:
+            place = ride_info.get('area')
+        if not place:
+            direction = (ride_info.get('direction') or "").lower()
+            if 'university' in direction or 'to university' in direction:
+                place = 'to university'
+            elif 'from university' in direction:
+                place = 'from university'
+            else:
+                # Fallback: prefer driver's area from app_state when available
+                place = ride_info.get('area') or self.app_state.get('area') or 'to university'
+
+        s = f"Ride to {place} at {ride_info.get('time')}\nPartner: {partner}\nRole: {role}"
         self.info_label.setText(s)
 
     def start_ride(self):
