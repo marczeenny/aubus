@@ -1,3 +1,9 @@
+"""UI styling helpers used across the client.
+
+Defines common colors, button styles, and helper functions to keep a
+consistent look-and-feel across the app.
+"""
+
 from PyQt5.QtGui import QFont # type: ignore
 from PyQt5.QtWidgets import QPushButton, QLabel # type: ignore
 from PyQt5.QtCore import Qt # type: ignore

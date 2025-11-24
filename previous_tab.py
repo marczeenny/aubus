@@ -1,3 +1,8 @@
+"""Previous rides tab.
+
+Shows a user's past rides and provides simple actions (view, rate).
+"""
+
 from PyQt5.QtCore import Qt # type: ignore
 from PyQt5.QtWidgets import (
     QWidget,

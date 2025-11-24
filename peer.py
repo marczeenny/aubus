@@ -1,3 +1,9 @@
+"""Lightweight peer server and send helper for P2P JSON messages.
+
+Used by the client to accept direct peer connections and send `CHAT_PEER`
+messages to other clients when available.
+"""
+
 import socket
 import threading
 import json

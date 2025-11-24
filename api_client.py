@@ -1,3 +1,8 @@
+"""Persistent TCP API client for communicating with the AUBus server.
+
+Handles connection, request/response waiting and asynchronous server events.
+"""
+
 import json
 import socket
 import threading

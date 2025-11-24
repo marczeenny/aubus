@@ -1,3 +1,8 @@
+"""Driver schedule UI.
+
+Allows drivers to add weekly availability entries used by ride matching.
+"""
+
 from PyQt5.QtWidgets import (
     QWidget,
     QVBoxLayout,

@@ -1,3 +1,9 @@
+"""Messages tab UI and P2P/client messaging helpers.
+
+Provides `MessagesTab` which handles contact list, chat UI, P2P sends and
+server-relay fallback including inline display of small image attachments.
+"""
+
 from PyQt5.QtCore import Qt # type: ignore
 from PyQt5.QtWidgets import (
     QWidget,

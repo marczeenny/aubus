@@ -1,3 +1,9 @@
+"""Central AUBus server: TCP message handlers and ride matching.
+
+Listens for JSON-over-TCP messages from clients, coordinates ride matching,
+P2P peer announcements, and relays chat messages when needed.
+"""
+
 import socket
 import threading
 import hashlib

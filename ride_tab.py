@@ -1,3 +1,9 @@
+"""Ride tab and driver/passenger UI.
+
+Contains ride search, driver results, and passenger/driver actions used by
+the main hub. Handles creating ride requests and accepting offers.
+"""
+
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QLineEdit, QSpinBox,
                              QPushButton, QListWidget, QListWidgetItem, QHBoxLayout, QMessageBox, QRadioButton, QComboBox, QDialog, QListView)  # type: ignore
 from PyQt5.QtCore import Qt  # type: ignore

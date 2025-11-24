@@ -1,3 +1,8 @@
+"""Base UI utilities for the AUBus client.
+
+Provides a simple `BaseWindow` with common header and content area used by pages.
+"""
+
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QLabel
 
 class BaseWindow(QMainWindow):

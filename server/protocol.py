@@ -1,3 +1,9 @@
+"""Simple newline-terminated JSON send/receive helpers for server/client.
+
+`send_json` appends a newline to each message. `recv_json` reads until the
+first newline to support longer JSON payloads (e.g., base64 attachments).
+"""
+
 import json
 
 # -----------------------------

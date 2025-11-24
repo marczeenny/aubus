@@ -1,3 +1,9 @@
+"""Database helpers for the AUBus server.
+
+Provides simple SQLite accessors for users, schedules, rides, ratings and
+messages. Includes lightweight migration routines via `_ensure_column`.
+"""
+
 import sqlite3
 from datetime import datetime, timedelta
 
