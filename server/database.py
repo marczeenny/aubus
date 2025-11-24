@@ -94,6 +94,9 @@ def init_db():
     _ensure_column(c, "rides", "started_at", "TEXT")
     _ensure_column(c, "rides", "completed_at", "TEXT")
     _ensure_column(c, "schedules", "area", "TEXT")
+    _ensure_column(c, "messages", "attachment_filename", "TEXT")
+    _ensure_column(c, "messages", "attachment_mime", "TEXT")
+    _ensure_column(c, "messages", "attachment_data", "TEXT")
     _ensure_column(c, "users", "min_rating", "INTEGER DEFAULT 0")
 
     conn.commit()
@@ -521,7 +524,7 @@ def fetch_messages(user_id, partner_id, limit=50):
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
-        SELECT sender_id, receiver_id, body, sent_at
+        SELECT sender_id, receiver_id, body, sent_at, attachment_filename, attachment_mime, attachment_data
         FROM messages
         WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?)
         ORDER BY sent_at DESC
@@ -529,7 +532,30 @@ def fetch_messages(user_id, partner_id, limit=50):
     """, (user_id, partner_id, partner_id, user_id, limit))
     rows = c.fetchall()
     conn.close()
-    return [{"sender_id": r[0], "receiver_id": r[1], "body": r[2], "sent_at": r[3]} for r in reversed(rows)]
+    result = []
+    for r in reversed(rows):
+        entry = {"sender_id": r[0], "receiver_id": r[1], "body": r[2], "sent_at": r[3]}
+        # attachment columns may be None
+        if len(r) >= 7:
+            entry["attachment_filename"] = r[4]
+            entry["attachment_mime"] = r[5]
+            entry["attachment_data"] = r[6]
+        result.append(entry)
+    return result
+
+
+def save_message_with_attachment(sender_id, receiver_id, body, attachment_filename=None, attachment_mime=None, attachment_data=None):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO messages (sender_id, receiver_id, body, sent_at, attachment_filename, attachment_mime, attachment_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (sender_id, receiver_id, body, datetime.utcnow().isoformat(), attachment_filename, attachment_mime, attachment_data))
+    conn.commit()
+    msg_id = c.lastrowid
+    sent_at = c.execute("SELECT sent_at FROM messages WHERE id=?", (msg_id,)).fetchone()[0]
+    conn.close()
+    return {"id": msg_id, "sent_at": sent_at}
 
 
 def list_contacts(user_id):

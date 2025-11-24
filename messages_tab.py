@@ -15,6 +15,9 @@ from PyQt5.QtWidgets import (
 from ui_styles import set_title_label, style_button, style_input
 from api_client import ApiClientError
 from peer import peer_send
+import base64
+import mimetypes
+from PyQt5.QtWidgets import QFileDialog
 
 
 class MessagesTab(QWidget):
@@ -52,6 +55,15 @@ class MessagesTab(QWidget):
         self.message_input.setPlaceholderText("Type a message...")
         style_input(self.message_input, width=340)
         row.addWidget(self.message_input)
+
+        attach_btn = QPushButton("Attach")
+        attach_btn.clicked.connect(self.choose_attachment)
+        style_button(attach_btn, min_height=30)
+        row.addWidget(attach_btn)
+
+        self.attachment_label = QLabel("")
+        row.addWidget(self.attachment_label)
+
         send_btn = QPushButton("Send")
         send_btn.clicked.connect(self.send_message)
         style_button(send_btn, min_height=30)
@@ -166,36 +178,58 @@ class MessagesTab(QWidget):
         if not api:
             QMessageBox.warning(self, "Not ready", "Please log in again.")
             return
+
         # Attempt peer-to-peer send if we have peer info for this contact
         peer_ip = self.current_contact.get('peer_ip') or self.current_contact.get('peer_address')
         peer_port = self.current_contact.get('peer_port')
+
+        # include attachment if present
+        attachment_filename = getattr(self, '_attachment_filename', None)
+        attachment_mime = getattr(self, '_attachment_mime', None)
+        attachment_data = getattr(self, '_attachment_data', None)
+
         if peer_ip and peer_port:
             try:
-                try:
-                    print(f"[MessagesTab] attempting P2P send to {peer_ip}:{peer_port}")
-                except Exception:
-                    pass
-                peer_send(peer_ip, int(peer_port), {"type": "CHAT_PEER", "payload": {"from": self.app_state.get('username'), "body": text}})
-                try:
-                    print(f"[MessagesTab] P2P send to {peer_ip}:{peer_port} succeeded (no exception)")
-                except Exception:
-                    pass
+                print(f"[MessagesTab] attempting P2P send to {peer_ip}:{peer_port}")
+                peer_payload = {"from": self.app_state.get('username'), "body": text}
+                if attachment_data:
+                    peer_payload.update({"attachment_filename": attachment_filename, "attachment_mime": attachment_mime, "attachment_data": attachment_data})
+                peer_send(peer_ip, int(peer_port), {"type": "CHAT_PEER", "payload": peer_payload})
+                print(f"[MessagesTab] P2P send to {peer_ip}:{peer_port} succeeded")
+
                 payload = {"sender_id": self.app_state.get("user_id"), "receiver_id": self.current_contact.get("id"), "body": text, "sent_at": ""}
+                if attachment_data:
+                    payload.update({"attachment_filename": attachment_filename, "attachment_mime": attachment_mime, "attachment_data": attachment_data})
                 self._append_message(self.current_contact, payload)
                 self.message_input.clear()
+                # clear attachment after sending
+                if hasattr(self, '_attachment_data'):
+                    delattr(self, '_attachment_data')
+                if hasattr(self, '_attachment_filename'):
+                    delattr(self, '_attachment_filename')
+                if hasattr(self, '_attachment_mime'):
+                    delattr(self, '_attachment_mime')
+                self.attachment_label.setText("")
                 return
             except Exception:
                 try:
                     print(f"[MessagesTab] P2P send to {peer_ip}:{peer_port} failed, falling back to server")
                 except Exception:
                     pass
-                pass
 
+        # Fallback to server-relay
         try:
-            response = api.send_message(self.current_contact["username"], text)
+            response = api.send_message(
+                self.current_contact["username"],
+                text,
+                attachment_filename=attachment_filename,
+                attachment_mime=attachment_mime,
+                attachment_data=attachment_data,
+            )
         except ApiClientError as exc:
             QMessageBox.critical(self, "Unable to send", str(exc))
             return
+
         if response.get("type") == "SEND_MESSAGE_OK":
             payload = {
                 "sender_id": self.app_state.get("user_id"),
@@ -203,8 +237,18 @@ class MessagesTab(QWidget):
                 "body": text,
                 "sent_at": response.get("payload", {}).get("sent_at", "")
             }
+            if attachment_data:
+                payload.update({"attachment_filename": attachment_filename, "attachment_mime": attachment_mime, "attachment_data": attachment_data})
             self._append_message(self.current_contact, payload)
             self.message_input.clear()
+            # clear attachment after sending
+            if hasattr(self, '_attachment_data'):
+                delattr(self, '_attachment_data')
+            if hasattr(self, '_attachment_filename'):
+                delattr(self, '_attachment_filename')
+            if hasattr(self, '_attachment_mime'):
+                delattr(self, '_attachment_mime')
+            self.attachment_label.setText("")
         else:
             reason = response.get("payload", {}).get("reason", "")
             QMessageBox.warning(self, "Unable to send", f"Server rejected the message: {reason}")
@@ -227,6 +271,13 @@ class MessagesTab(QWidget):
             'body': body,
             'sent_at': ''
         }
+        # include attachments if provided by peer
+        if 'attachment_filename' in payload:
+            entry['attachment_filename'] = payload.get('attachment_filename')
+        if 'attachment_mime' in payload:
+            entry['attachment_mime'] = payload.get('attachment_mime')
+        if 'attachment_data' in payload:
+            entry['attachment_data'] = payload.get('attachment_data')
         if self.current_contact and self.current_contact.get('username') == from_username:
             self._append_message(contact or {'username': from_username}, entry)
         else:
@@ -236,15 +287,62 @@ class MessagesTab(QWidget):
             self.active_ride_contact = contact
             self.refresh_contacts(preserve_selection=True)
 
+    def choose_attachment(self):
+        fname, _ = QFileDialog.getOpenFileName(self, "Select file to attach", "", "Images and Audio (*.png *.jpg *.jpeg *.bmp *.gif *.wav *.mp3);;All Files (*)")
+        if not fname:
+            return
+        try:
+            with open(fname, 'rb') as f:
+                data = f.read()
+            b64 = base64.b64encode(data).decode('ascii')
+            mime, _ = mimetypes.guess_type(fname)
+            if not mime:
+                mime = 'application/octet-stream'
+            # store for next send
+            self._attachment_data = b64
+            self._attachment_filename = fname.split('/')[-1].split('\\')[-1]
+            self._attachment_mime = mime
+            self.attachment_label.setText(f"Attached: {self._attachment_filename}")
+        except Exception as e:
+            QMessageBox.warning(self, "Attachment error", f"Unable to read file: {e}")
+
     def _append_message(self, contact, message_entry):
         user_id = self.app_state.get("user_id")
         sender_id = message_entry.get("sender_id")
         sent_at = message_entry.get("sent_at", "")
         prefix = "You" if sender_id == user_id else contact.get("name") or contact.get("username")
-        line = f"[{sent_at}] {prefix}: {message_entry.get('body')}"
-        self.chat_history.append(line)
+        # Render attachments inline for images, otherwise show placeholder
+        body = message_entry.get('body') or ''
+        attachment_mime = message_entry.get('attachment_mime')
+        attachment_filename = message_entry.get('attachment_filename')
+        attachment_data = message_entry.get('attachment_data')
+        if attachment_data and attachment_mime and attachment_mime.startswith('image/'):
+            try:
+                img_html = f"<br><img src=\"data:{attachment_mime};base64,{attachment_data}\" width=300><br>" \
+                    + (f"<i>{attachment_filename}</i><br>" if attachment_filename else "")
+                line_html = f"[{sent_at}] <b>{prefix}:</b> {body}{img_html}"
+                self.chat_history.append(line_html)
+            except Exception:
+                line = f"[{sent_at}] {prefix}: {body} [Image: {attachment_filename}]"
+                self.chat_history.append(line)
+        else:
+            line = f"[{sent_at}] {prefix}: {body}"
+            if attachment_data and attachment_filename:
+                line += f" [Attachment: {attachment_filename}]"
+            self.chat_history.append(line)
         try:
-            print(f"[MessagesTab] appended message to chat_history: {line}")
+            log_line = None
+            try:
+                log_line = line
+            except NameError:
+                pass
+            try:
+                log_line = log_line or line_html
+            except NameError:
+                pass
+            if not log_line:
+                log_line = f"[{sent_at}] {prefix}: {body}"
+            print(f"[MessagesTab] appended message to chat_history: {log_line}")
         except Exception:
             pass
 
@@ -275,6 +373,13 @@ class MessagesTab(QWidget):
                 "body": payload.get("message"),
                 "sent_at": payload.get("sent_at", "")
             }
+            # include attachments if present
+            if payload.get("attachment_filename"):
+                entry["attachment_filename"] = payload.get("attachment_filename")
+            if payload.get("attachment_mime"):
+                entry["attachment_mime"] = payload.get("attachment_mime")
+            if payload.get("attachment_data"):
+                entry["attachment_data"] = payload.get("attachment_data")
             if self.current_contact and self.current_contact.get("username") == username:
                 self._append_message(contact, entry)
             else:

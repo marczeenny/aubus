@@ -153,8 +153,15 @@ class ApiClient:
     def fetch_messages(self, user_id: int, partner_id: int) -> Dict[str, Any]:
         return self._send_and_wait("FETCH_MESSAGES", {"user_id": user_id, "partner_id": partner_id}, expected={"MESSAGES"})
 
-    def send_message(self, to_username: str, message: str) -> Dict[str, Any]:
-        return self._send_and_wait("SEND_MESSAGE", {"to": to_username, "message": message}, expected={"SEND_MESSAGE_OK", "SEND_MESSAGE_FAIL"})
+    def send_message(self, to_username: str, message: str, attachment_filename: str = None, attachment_mime: str = None, attachment_data: str = None) -> Dict[str, Any]:
+        payload = {"to": to_username, "message": message}
+        if attachment_filename is not None:
+            payload["attachment_filename"] = attachment_filename
+        if attachment_mime is not None:
+            payload["attachment_mime"] = attachment_mime
+        if attachment_data is not None:
+            payload["attachment_data"] = attachment_data
+        return self._send_and_wait("SEND_MESSAGE", payload, expected={"SEND_MESSAGE_OK", "SEND_MESSAGE_FAIL"})
 
     def drain_events(self) -> List[ApiEvent]:
         events: List[ApiEvent] = []

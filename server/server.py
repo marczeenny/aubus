@@ -27,6 +27,7 @@ from database import (
     get_user_by_id,
     get_pending_rides_for_driver,
     save_message,
+    save_message_with_attachment,
     fetch_messages,
     list_contacts,
     get_ride_by_id,
@@ -384,6 +385,9 @@ def handle_fetch_messages(conn, p):
 def handle_send_message(conn, p, sender_username):
     to_username = p["to"]
     message = p["message"]
+    attachment_filename = p.get("attachment_filename")
+    attachment_mime = p.get("attachment_mime")
+    attachment_data = p.get("attachment_data")
     if not sender_username:
         send_json(conn, {"type": "SEND_MESSAGE_FAIL", "payload": {"reason": "Not authenticated"}})
         return
@@ -393,14 +397,23 @@ def handle_send_message(conn, p, sender_username):
         if not sender or not receiver:
             send_json(conn, {"type": "SEND_MESSAGE_FAIL", "payload": {"reason": "User not found"}})
             return
-        msg = save_message(sender["id"], receiver["id"], message)
+        if attachment_data:
+            msg = save_message_with_attachment(sender["id"], receiver["id"], message,
+                                               attachment_filename=attachment_filename,
+                                               attachment_mime=attachment_mime,
+                                               attachment_data=attachment_data)
+        else:
+            msg = save_message(sender["id"], receiver["id"], message)
     send_json(conn, {"type": "SEND_MESSAGE_OK", "payload": msg})
     send_to_username(to_username, {"type": "CHAT_MESSAGE", "payload": {
         "from": sender_username,
         "from_id": sender["id"],
         "to_id": receiver["id"],
         "message": message,
-        "sent_at": msg["sent_at"]
+        "sent_at": msg["sent_at"],
+        "attachment_filename": attachment_filename,
+        "attachment_mime": attachment_mime,
+        "attachment_data": attachment_data
     }})
 
 
