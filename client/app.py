@@ -5,12 +5,12 @@
 
 import sys
 from PyQt5.QtWidgets import QApplication, QStackedWidget # type: ignore
-from login_page import LoginPage
-from register_page import RegisterPage
-from preliminary_page import PreliminaryPage
-from main_page import MainPage
-from api_client import ApiClient
-from peer import PeerServer
+from .login_page import LoginPage
+from .register_page import RegisterPage
+from .preliminary_page import PreliminaryPage
+from .main_page import MainPage
+from .api_client import ApiClient
+from .peer import PeerServer
 
 def build_app():
     app = QApplication(sys.argv)

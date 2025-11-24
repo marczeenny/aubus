@@ -5,17 +5,17 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTabWidget, QMessageBox # type: ignore
 from PyQt5.QtCore import QTimer, Qt # type: ignore
 import requests
-from logo_widget import get_logo_label, AUBUS_MAROON
-from ui_styles import set_title_label
-from ride_tab import RideTab
-from ride_tab import CurrentRidesTab
-from schedule_tab import ScheduleTab
-from previous_tab import PreviousTab
-from messages_tab import MessagesTab
-from progress_page import ProgressPage
+from .logo_widget import get_logo_label, AUBUS_MAROON
+from .ui_styles import set_title_label
+from .ride_tab import RideTab
+from .ride_tab import CurrentRidesTab
+from .schedule_tab import ScheduleTab
+from .previous_tab import PreviousTab
+from .messages_tab import MessagesTab
+from .progress_page import ProgressPage
 from PyQt5.QtWidgets import QPushButton # type: ignore
-from ui_styles import style_button
-from settings_tab import SettingsTab
+from .ui_styles import style_button
+from .settings_tab import SettingsTab
 
 class MainPage(QWidget):
     def __init__(self, parent_stack=None, app_state=None):

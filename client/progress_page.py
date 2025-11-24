@@ -3,9 +3,9 @@
 # Weather widget is a placeholder; a real API integration should replace 'refresh_weather' behavior.
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMessageBox # type: ignore
-from logo_widget import get_logo_label
-from ui_styles import set_title_label, style_button
-from api_client import ApiClientError
+from .logo_widget import get_logo_label
+from .ui_styles import set_title_label, style_button
+from .api_client import ApiClientError
 
 class ProgressPage(QWidget):
     def __init__(self, app_state=None, on_ride_end=None):
